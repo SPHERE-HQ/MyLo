@@ -12,6 +12,9 @@ on:
       - 'mobile/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     name: Build Flutter APK
@@ -116,7 +119,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Mylo ${{ steps.version.outputs.tag }}"
           body: |
-            ## Mylo App — Build Otomatis 🚀
+            ## Mylo App — Build Otomatis
 
             **Branch:** `${{ github.ref_name }}`
             **Commit:** `${{ github.sha }}`
