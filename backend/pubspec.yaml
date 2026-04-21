@@ -17,6 +17,5 @@ dependencies:
   dotenv: ^4.2.0
 
 dev_dependencies:
-  dart_frog_gen: ^1.4.0
   test: ^1.24.0
   mocktail: ^1.0.4
