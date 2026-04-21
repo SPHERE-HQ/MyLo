@@ -18,6 +18,7 @@ import '../modules/email/presentation/screens/email_list_screen.dart';
 import '../modules/email/presentation/screens/email_detail_screen.dart';
 import '../modules/community/presentation/screens/community_list_screen.dart';
 import '../modules/community/presentation/screens/channel_screen.dart';
+import '../modules/profile/presentation/screens/profile_screen.dart';
 import '../core/auth/auth_provider.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -30,7 +31,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSplash = state.matchedLocation == '/';
       if (isSplash) return null;
       if (!isAuthenticated && !isAuthRoute) return '/auth/login';
-      if (isAuthenticated && isAuthRoute) return '/home';
+      if (isAuthenticated && isAuthRoute) return '/home/chat';
       return null;
     },
     routes: [
@@ -42,18 +43,34 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (_, __, child) => HomeShell(child: child),
         routes: [
-          GoRoute(path: '/home', redirect: (_, __) => '/home/chat'),
           GoRoute(path: '/home/chat', builder: (_, __) => const ChatListScreen()),
-          GoRoute(path: '/home/chat/:id', builder: (_, state) => ChatRoomScreen(conversationId: state.pathParameters['id']!)),
+          GoRoute(
+            path: '/home/chat/:id',
+            builder: (_, state) => ChatRoomScreen(
+              conversationId: state.pathParameters['id']!,
+            ),
+          ),
           GoRoute(path: '/home/feed', builder: (_, __) => const FeedScreen()),
           GoRoute(path: '/home/explore', builder: (_, __) => const ExploreScreen()),
           GoRoute(path: '/home/wallet', builder: (_, __) => const WalletScreen()),
           GoRoute(path: '/home/wallet/topup', builder: (_, __) => const TopupScreen()),
           GoRoute(path: '/home/wallet/transfer', builder: (_, __) => const TransferScreen()),
           GoRoute(path: '/home/email', builder: (_, __) => const EmailListScreen()),
-          GoRoute(path: '/home/email/:id', builder: (_, state) => EmailDetailScreen(emailId: state.pathParameters['id']!)),
+          GoRoute(
+            path: '/home/email/:id',
+            builder: (_, state) => EmailDetailScreen(
+              emailId: state.pathParameters['id']!,
+            ),
+          ),
           GoRoute(path: '/home/community', builder: (_, __) => const CommunityListScreen()),
-          GoRoute(path: '/home/community/:serverId/channel/:channelId', builder: (_, state) => ChannelScreen(serverId: state.pathParameters['serverId']!, channelId: state.pathParameters['channelId']!)),
+          GoRoute(
+            path: '/home/community/:serverId/channel/:channelId',
+            builder: (_, state) => ChannelScreen(
+              serverId: state.pathParameters['serverId']!,
+              channelId: state.pathParameters['channelId']!,
+            ),
+          ),
+          GoRoute(path: '/home/profile', builder: (_, __) => const ProfileScreen()),
         ],
       ),
     ],
