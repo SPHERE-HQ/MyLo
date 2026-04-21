@@ -21,7 +21,6 @@ dependencies:
 
   # Storage
   flutter_secure_storage: ^9.2.4
-  shared_preferences: ^2.5.3
   hive_flutter: ^1.1.0
 
   # WebSocket

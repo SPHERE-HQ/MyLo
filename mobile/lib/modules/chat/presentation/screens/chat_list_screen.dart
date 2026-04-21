@@ -15,6 +15,7 @@ final conversationsProvider = FutureProvider.autoDispose((ref) async {
 
 class ChatListScreen extends ConsumerWidget {
   const ChatListScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final convs = ref.watch(conversationsProvider);
@@ -33,21 +34,25 @@ class ChatListScreen extends ConsumerWidget {
             child: Row(children: [
               MLoadingSkeleton(width: 48, height: 48, borderRadius: 24),
               SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                MLoadingSkeleton(width: 120, height: 14),
-                SizedBox(height: 6),
-                MLoadingSkeleton(height: 12),
-              ])),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  MLoadingSkeleton(width: 120, height: 14),
+                  SizedBox(height: 6),
+                  MLoadingSkeleton(height: 12),
+                ]),
+              ),
             ]),
           ),
         ),
         error: (e, _) => Center(child: Text('$e')),
         data: (convs) => convs.isEmpty
-            ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.chat_bubble_outline, size: 64, color: MyloColors.textTertiary),
-                SizedBox(height: 12),
-                Text('Belum ada percakapan', style: TextStyle(color: MyloColors.textSecondary)),
-              ]))
+            ? const Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.chat_bubble_outline, size: 64, color: MyloColors.textTertiary),
+                  SizedBox(height: 12),
+                  Text('Belum ada percakapan', style: TextStyle(color: MyloColors.textSecondary)),
+                ]),
+              )
             : ListView.separated(
                 itemCount: convs.length,
                 separatorBuilder: (_, __) => const Divider(height: 1, indent: 76),
@@ -56,8 +61,16 @@ class ChatListScreen extends ConsumerWidget {
                   final lastMsg = c['lastMessage'] as Map<String, dynamic>?;
                   return ListTile(
                     leading: MAvatar(name: c['name'] ?? 'Chat', url: c['avatarUrl']),
-                    title: Text(c['name'] ?? 'Percakapan', fontWeight: FontWeight.w600),
-                    subtitle: Text(lastMsg?['content'] ?? 'Belum ada pesan', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: MyloColors.textSecondary)),
+                    title: Text(
+                      c['name'] ?? 'Percakapan',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      lastMsg?['content'] ?? 'Belum ada pesan',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: MyloColors.textSecondary),
+                    ),
                     onTap: () => context.push('/home/chat/${c['id']}'),
                   );
                 },
