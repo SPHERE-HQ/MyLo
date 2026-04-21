@@ -1,0 +1,22 @@
+name: mylo_backend
+description: Mylo Super App — Dart Frog Backend by Sphere
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  dart_frog: ^1.4.0
+  dart_frog_web_socket: ^1.0.0
+  postgres: ^3.5.4
+  bcrypt: ^1.1.4
+  dart_jsonwebtoken: ^2.8.1
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  dotenv: ^4.2.0
+
+dev_dependencies:
+  dart_frog_gen: ^1.4.0
+  test: ^1.24.0
+  mocktail: ^1.0.4

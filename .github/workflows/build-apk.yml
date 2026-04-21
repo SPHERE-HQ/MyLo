@@ -1,0 +1,145 @@
+name: Build Mylo APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Flutter APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+          cache: true
+
+      - name: Verifikasi Flutter
+        run: flutter doctor -v
+        working-directory: mobile
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: mobile
+
+      - name: Generate kode (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: mobile
+
+      - name: Analyze kode
+        run: flutter analyze
+        working-directory: mobile
+        continue-on-error: true
+
+      - name: Build APK (debug)
+        run: |
+          flutter build apk --debug \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app/api
+        working-directory: mobile
+
+      - name: Build APK (release)
+        run: |
+          flutter build apk --release \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app/api \
+            --obfuscate \
+            --split-debug-info=build/debug-info
+        working-directory: mobile
+
+      - name: Build APK split per ABI
+        run: |
+          flutter build apk --release --split-per-abi \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app/api
+        working-directory: mobile
+
+      - name: Upload APK Debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylo-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+      - name: Upload APK Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylo-release-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Upload APK Split (arm64, armeabi, x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylo-release-apk-split
+          path: mobile/build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build-apk
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: apks
+
+      - name: Get version dari pubspec
+        id: version
+        run: |
+          VERSION=$(grep '^version:' mobile/pubspec.yaml | sed 's/version: //')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION-build.${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Mylo ${{ steps.version.outputs.tag }}"
+          body: |
+            ## Mylo App — Build Otomatis
+
+            **Branch:** `${{ github.ref_name }}`
+            **Commit:** `${{ github.sha }}`
+            **Build:** #${{ github.run_number }}
+
+            ### Download APK
+            - **arm64-v8a** — Untuk HP modern (disarankan)
+            - **armeabi-v7a** — Untuk HP lama
+            - **x86_64** — Untuk emulator
+            - **Universal** — Semua perangkat (ukuran lebih besar)
+
+            ### Cara Install
+            1. Download APK sesuai perangkat kamu
+            2. Aktifkan *Install dari sumber tidak dikenal* di pengaturan HP
+            3. Install APK
+          files: |
+            apks/mylo-release-apk/app-release.apk
+            apks/mylo-release-apk-split/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
