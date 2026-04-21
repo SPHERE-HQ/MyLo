@@ -7,8 +7,8 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
-  dart_frog: ^1.0.0
-  dart_frog_web_socket: ^1.0.0
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
   postgres: ^3.0.0
   bcrypt: ^1.1.0
   dart_jsonwebtoken: ^2.0.0
