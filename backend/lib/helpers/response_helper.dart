@@ -1,22 +1,18 @@
-import 'package:dart_frog/dart_frog.dart';
+import "dart:convert";
+import "package:shelf/shelf.dart";
 
-Response ok(dynamic data) =>
-    Response.json(body: data, statusCode: 200);
+Response jsonResponse(dynamic data, [int statusCode = 200]) {
+  return Response(
+    statusCode,
+    body: jsonEncode(data),
+    headers: {"Content-Type": "application/json"},
+  );
+}
 
-Response created(dynamic data) =>
-    Response.json(body: data, statusCode: 201);
-
-Response badRequest(String message) =>
-    Response.json(body: {'error': message}, statusCode: 400);
-
-Response unauthorized() =>
-    Response.json(body: {'error': 'Unauthorized'}, statusCode: 401);
-
-Response notFound(String message) =>
-    Response.json(body: {'error': message}, statusCode: 404);
-
-Response conflict(String message) =>
-    Response.json(body: {'error': message}, statusCode: 409);
-
-Response serverError() =>
-    Response.json(body: {'error': 'Internal server error'}, statusCode: 500);
+Response ok(dynamic data) => jsonResponse(data, 200);
+Response created(dynamic data) => jsonResponse(data, 201);
+Response badRequest(String message) => jsonResponse({"error": message}, 400);
+Response unauthorized([String message = "Unauthorized"]) => jsonResponse({"error": message}, 401);
+Response notFound(String message) => jsonResponse({"error": message}, 404);
+Response conflict(String message) => jsonResponse({"error": message}, 409);
+Response serverError([String message = "Internal server error"]) => jsonResponse({"error": message}, 500);
