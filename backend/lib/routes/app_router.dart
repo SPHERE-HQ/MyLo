@@ -2,6 +2,7 @@ import "dart:convert";
 import "dart:io";
 import "package:shelf/shelf.dart";
 import "package:shelf_router/shelf_router.dart";
+import "package:postgres/postgres.dart";
 import "package:bcrypt/bcrypt.dart";
 import "package:uuid/uuid.dart";
 import "package:dart_jsonwebtoken/dart_jsonwebtoken.dart";
@@ -39,7 +40,6 @@ Handler createRouter() {
   return router;
 }
 
-// --- Root ---
 Response _root(Request req) => ok({
   "app": "Mylo API by Sphere",
   "version": "1.0.0",
@@ -51,7 +51,6 @@ Response _health(Request req) => ok({
   "timestamp": DateTime.now().toIso8601String(),
 });
 
-// --- Auth ---
 Future<Response> _register(Request req) async {
   try {
     final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
@@ -115,7 +114,7 @@ Future<Response> _getMe(Request req) async {
     final userId = req.context["userId"] as String;
     final db = await getDb();
     final rows = await db.execute(
-      Sql.named("SELECT id, username, email, display_name, avatar_url, bio, phone, is_verified FROM users WHERE id = @id LIMIT 1"),
+      Sql.named("SELECT id, username, email, display_name, avatar_url, bio, is_verified FROM users WHERE id = @id LIMIT 1"),
       parameters: {"id": userId},
     );
     if (rows.isEmpty) return notFound("User tidak ditemukan");
@@ -141,14 +140,13 @@ Future<Response> _updateMe(Request req) async {
   }
 }
 
-// --- Users ---
 Future<Response> _searchUsers(Request req) async {
   try {
     final q = req.url.queryParameters["q"] ?? "";
     final db = await getDb();
     final rows = await db.execute(
       Sql.named("SELECT id, username, display_name, avatar_url FROM users WHERE username ILIKE @q OR display_name ILIKE @q LIMIT 20"),
-      parameters: {"q": "%\$q%"},
+      parameters: {"q": "%$q%"},
     );
     return ok({"users": rows.map((r) {
       final m = r.toColumnMap();
@@ -159,7 +157,6 @@ Future<Response> _searchUsers(Request req) async {
   }
 }
 
-// --- Feed ---
 Future<Response> _getFeedPosts(Request req) async {
   try {
     final db = await getDb();
@@ -193,7 +190,6 @@ Future<Response> _createPost(Request req) async {
   }
 }
 
-// --- Chat ---
 Future<Response> _getConversations(Request req) async {
   try {
     final userId = req.context["userId"] as String;
@@ -211,7 +207,6 @@ Future<Response> _getConversations(Request req) async {
   }
 }
 
-// --- Wallet ---
 Future<Response> _getWallet(Request req) async {
   try {
     final userId = req.context["userId"] as String;
@@ -244,7 +239,6 @@ Future<Response> _topup(Request req) async {
   }
 }
 
-// --- Notifications ---
 Future<Response> _getNotifications(Request req) async {
   try {
     final userId = req.context["userId"] as String;
