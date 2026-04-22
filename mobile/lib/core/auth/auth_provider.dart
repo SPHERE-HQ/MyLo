@@ -16,6 +16,27 @@ class AuthUser {
   );
 }
 
+String _parseError(DioException e, String fallback) {
+  if (e.response != null) {
+    final data = e.response!.data;
+    if (data is Map && data['error'] != null) return data['error'].toString();
+    if (data is String && data.isNotEmpty) return data;
+    return 'Server error ${e.response!.statusCode}';
+  }
+  switch (e.type) {
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+      return 'Koneksi timeout — periksa jaringan kamu';
+    case DioExceptionType.connectionError:
+      return 'Tidak bisa terhubung ke server — pastikan internet aktif';
+    case DioExceptionType.badCertificate:
+      return 'Masalah sertifikat SSL';
+    default:
+      return '$fallback: ${e.message ?? 'unknown error'}';
+  }
+}
+
 class AuthNotifier extends AsyncNotifier<AuthUser?> {
   @override
   Future<AuthUser?> build() async {
@@ -42,7 +63,9 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
       await TokenManager.saveUserId(user.id);
       state = AsyncValue.data(user);
     } on DioException catch (e, s) {
-      state = AsyncValue.error(e.response?.data?['error'] ?? 'Login gagal', s);
+      state = AsyncValue.error(_parseError(e, 'Login gagal'), s);
+    } catch (e, s) {
+      state = AsyncValue.error('Login gagal: $e', s);
     }
   }
 
@@ -58,7 +81,9 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
       final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
       state = AsyncValue.data(user);
     } on DioException catch (e, s) {
-      state = AsyncValue.error(e.response?.data?['error'] ?? 'Registrasi gagal', s);
+      state = AsyncValue.error(_parseError(e, 'Registrasi gagal'), s);
+    } catch (e, s) {
+      state = AsyncValue.error('Registrasi gagal: $e', s);
     }
   }
 
