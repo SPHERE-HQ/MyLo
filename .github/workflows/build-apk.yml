@@ -55,13 +55,13 @@ jobs:
         working-directory: mobile
         run: |
           flutter build apk --debug \
-            --dart-define=API_URL=https://mylo-production-5516.up.railway.app/api
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
 
       - name: Build APK split per ABI (release)
         working-directory: mobile
         run: |
           flutter build apk --release --split-per-abi \
-            --dart-define=API_URL=https://mylo-production-5516.up.railway.app/api
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
 
       - name: Upload APK Debug
         uses: actions/upload-artifact@v4
