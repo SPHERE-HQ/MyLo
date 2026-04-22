@@ -16,78 +16,24 @@ export "../middleware/cors_middleware.dart" show corsMiddleware;
 
 Handler createRouter() {
   final router = Router();
-
   router.get("/", _root);
   router.get("/health", _health);
-
-  // TEMP admin endpoint - remove after use
-  router.post("/admin/reset-password", _adminResetPassword);
-  router.get("/admin/delete-user", _adminDeleteUser);
-
   router.post("/auth/register", _register);
   router.post("/auth/login", _login);
   router.get("/auth/me", Pipeline().addMiddleware(authMiddleware()).addHandler(_getMe));
   router.put("/auth/me", Pipeline().addMiddleware(authMiddleware()).addHandler(_updateMe));
-
   router.get("/users/search", Pipeline().addMiddleware(authMiddleware()).addHandler(_searchUsers));
-
   router.get("/feed/posts", Pipeline().addMiddleware(authMiddleware()).addHandler(_getFeedPosts));
   router.post("/feed/posts", Pipeline().addMiddleware(authMiddleware()).addHandler(_createPost));
-
   router.get("/chat/conversations", Pipeline().addMiddleware(authMiddleware()).addHandler(_getConversations));
-
   router.get("/wallet", Pipeline().addMiddleware(authMiddleware()).addHandler(_getWallet));
   router.post("/wallet/topup", Pipeline().addMiddleware(authMiddleware()).addHandler(_topup));
-
   router.get("/notifications", Pipeline().addMiddleware(authMiddleware()).addHandler(_getNotifications));
-
   return router;
 }
 
 Response _root(Request req) => ok({"app": "Mylo API by Sphere", "version": "1.0.0", "status": "running"});
 Response _health(Request req) => ok({"status": "ok", "timestamp": DateTime.now().toIso8601String()});
-
-// --- TEMP ADMIN ---
-Future<Response> _adminResetPassword(Request req) async {
-  try {
-    final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
-    if (body["key"] != "mylo-fix-2026") return unauthorized("Bad key");
-    final email = body["email"] as String?;
-    final newPass = body["password"] as String?;
-    if (email == null || newPass == null) return badRequest("Missing fields");
-    final hash = BCrypt.hashpw(newPass, BCrypt.gensalt());
-    final db = await getDb();
-    final result = await db.execute(
-      Sql.named("UPDATE users SET password_hash = @hash WHERE email = @email"),
-      parameters: {"hash": hash, "email": email},
-    );
-    return ok({"message": "Password updated", "affected": result.affectedRows});
-  } catch (e) {
-    return serverError(e.toString());
-  }
-}
-
-Future<Response> _adminDeleteUser(Request req) async {
-  try {
-    final key = req.url.queryParameters["key"];
-    final email = req.url.queryParameters["email"];
-    if (key != "mylo-fix-2026") return unauthorized("Bad key");
-    if (email == null) return badRequest("Missing email");
-    final db = await getDb();
-    await db.execute(
-      Sql.named("DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = @email)"),
-      parameters: {"email": email},
-    );
-    final result = await db.execute(
-      Sql.named("DELETE FROM users WHERE email = @email"),
-      parameters: {"email": email},
-    );
-    return ok({"message": "User deleted", "affected": result.affectedRows});
-  } catch (e) {
-    return serverError(e.toString());
-  }
-}
-// --- END TEMP ADMIN ---
 
 Future<Response> _register(Request req) async {
   try {
