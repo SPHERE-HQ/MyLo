@@ -21,19 +21,36 @@ import '../modules/community/presentation/screens/channel_screen.dart';
 import '../modules/profile/presentation/screens/profile_screen.dart';
 import '../core/auth/auth_provider.dart';
 
+// ChangeNotifier sebagai jembatan antara Riverpod dan GoRouter
+// Ini mencegah GoRouter dibuat ulang setiap kali auth state berubah
+class _RouterNotifier extends ChangeNotifier {
+  _RouterNotifier(this._ref) {
+    _ref.listen<AsyncValue<AuthUser?>>(authStateProvider, (_, __) {
+      notifyListeners();
+    });
+  }
+  final Ref _ref;
+
+  String? redirect(BuildContext context, GoRouterState state) {
+    final auth = _ref.read(authStateProvider);
+    final isAuthenticated = auth.value != null;
+    final isAuthRoute = state.matchedLocation.startsWith('/auth');
+    final isSplash = state.matchedLocation == '/';
+    if (isSplash) return null;
+    if (!isAuthenticated && !isAuthRoute) return '/auth/login';
+    if (isAuthenticated && isAuthRoute) return '/home/chat';
+    return null;
+  }
+}
+
+final _routerNotifierProvider = Provider((ref) => _RouterNotifier(ref));
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authStateProvider);
+  final notifier = ref.watch(_routerNotifierProvider);
   return GoRouter(
     initialLocation: '/',
-    redirect: (context, state) {
-      final isAuthenticated = auth.value != null;
-      final isAuthRoute = state.matchedLocation.startsWith('/auth');
-      final isSplash = state.matchedLocation == '/';
-      if (isSplash) return null;
-      if (!isAuthenticated && !isAuthRoute) return '/auth/login';
-      if (isAuthenticated && isAuthRoute) return '/home/chat';
-      return null;
-    },
+    refreshListenable: notifier,
+    redirect: notifier.redirect,
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/auth/onboarding', builder: (_, __) => const OnboardingScreen()),
