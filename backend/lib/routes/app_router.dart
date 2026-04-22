@@ -20,6 +20,10 @@ Handler createRouter() {
   router.get("/", _root);
   router.get("/health", _health);
 
+  // TEMP admin endpoint - remove after use
+  router.post("/admin/reset-password", _adminResetPassword);
+  router.get("/admin/delete-user", _adminDeleteUser);
+
   router.post("/auth/register", _register);
   router.post("/auth/login", _login);
   router.get("/auth/me", Pipeline().addMiddleware(authMiddleware()).addHandler(_getMe));
@@ -40,16 +44,50 @@ Handler createRouter() {
   return router;
 }
 
-Response _root(Request req) => ok({
-  "app": "Mylo API by Sphere",
-  "version": "1.0.0",
-  "status": "running",
-});
+Response _root(Request req) => ok({"app": "Mylo API by Sphere", "version": "1.0.0", "status": "running"});
+Response _health(Request req) => ok({"status": "ok", "timestamp": DateTime.now().toIso8601String()});
 
-Response _health(Request req) => ok({
-  "status": "ok",
-  "timestamp": DateTime.now().toIso8601String(),
-});
+// --- TEMP ADMIN ---
+Future<Response> _adminResetPassword(Request req) async {
+  try {
+    final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
+    if (body["key"] != "mylo-fix-2026") return unauthorized("Bad key");
+    final email = body["email"] as String?;
+    final newPass = body["password"] as String?;
+    if (email == null || newPass == null) return badRequest("Missing fields");
+    final hash = BCrypt.hashpw(newPass, BCrypt.gensalt());
+    final db = await getDb();
+    final result = await db.execute(
+      Sql.named("UPDATE users SET password_hash = @hash WHERE email = @email"),
+      parameters: {"hash": hash, "email": email},
+    );
+    return ok({"message": "Password updated", "affected": result.affectedRows});
+  } catch (e) {
+    return serverError(e.toString());
+  }
+}
+
+Future<Response> _adminDeleteUser(Request req) async {
+  try {
+    final key = req.url.queryParameters["key"];
+    final email = req.url.queryParameters["email"];
+    if (key != "mylo-fix-2026") return unauthorized("Bad key");
+    if (email == null) return badRequest("Missing email");
+    final db = await getDb();
+    await db.execute(
+      Sql.named("DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = @email)"),
+      parameters: {"email": email},
+    );
+    final result = await db.execute(
+      Sql.named("DELETE FROM users WHERE email = @email"),
+      parameters: {"email": email},
+    );
+    return ok({"message": "User deleted", "affected": result.affectedRows});
+  } catch (e) {
+    return serverError(e.toString());
+  }
+}
+// --- END TEMP ADMIN ---
 
 Future<Response> _register(Request req) async {
   try {
@@ -58,9 +96,7 @@ Future<Response> _register(Request req) async {
     final email = body["email"] as String?;
     final password = body["password"] as String?;
     final displayName = body["displayName"] as String?;
-    if (username == null || email == null || password == null) {
-      return badRequest("username, email, dan password wajib diisi");
-    }
+    if (username == null || email == null || password == null) return badRequest("username, email, dan password wajib diisi");
     if (password.length < 8) return badRequest("Password minimal 8 karakter");
     final db = await getDb();
     final existing = await db.execute(
@@ -94,9 +130,7 @@ Future<Response> _login(Request req) async {
     );
     if (rows.isEmpty) return unauthorized("Email atau password salah");
     final user = rows.first.toColumnMap();
-    if (!BCrypt.checkpw(password, user["password_hash"] as String)) {
-      return unauthorized("Email atau password salah");
-    }
+    if (!BCrypt.checkpw(password, user["password_hash"] as String)) return unauthorized("Email atau password salah");
     final userId = user["id"] as String;
     final token = signToken(userId, email);
     await db.execute(
