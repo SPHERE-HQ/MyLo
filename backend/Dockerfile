@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y build-essential libssl-dev && rm -rf /v
 
 WORKDIR /app
 
+# cache-bust: 2026-04-22
 COPY backend/pubspec.yaml ./
 RUN dart pub get
 
