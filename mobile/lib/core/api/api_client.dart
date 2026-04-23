@@ -17,6 +17,7 @@ final dioProvider = Provider<Dio>((ref) {
     validateStatus: (status) => status != null && status < 500,
   ));
 
+  // Auth token interceptor
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {
       final token = await TokenManager.getToken();
@@ -24,6 +25,28 @@ final dioProvider = Provider<Dio>((ref) {
       handler.next(options);
     },
     onError: (error, handler) {
+      handler.next(error);
+    },
+  ));
+
+  // Retry interceptor — retry up to 2x on connection errors
+  dio.interceptors.add(InterceptorsWrapper(
+    onError: (error, handler) async {
+      final isConnectionError = error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout;
+      final retryCount = error.requestOptions.extra['retryCount'] ?? 0;
+      if (isConnectionError && retryCount < 2) {
+        await Future.delayed(const Duration(seconds: 2));
+        final opts = error.requestOptions;
+        opts.extra['retryCount'] = retryCount + 1;
+        try {
+          final response = await dio.fetch(opts);
+          handler.resolve(response);
+        } catch (e) {
+          handler.next(error);
+        }
+        return;
+      }
       handler.next(error);
     },
   ));
