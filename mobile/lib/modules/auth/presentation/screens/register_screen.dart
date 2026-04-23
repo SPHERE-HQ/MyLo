@@ -19,15 +19,31 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
 
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _userCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
-    await ref.read(authStateProvider.notifier).register(_userCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text, _nameCtrl.text.trim());
+    await ref.read(authStateProvider.notifier).register(
+      _userCtrl.text.trim(),
+      _emailCtrl.text.trim(),
+      _passCtrl.text,
+      _nameCtrl.text.trim(),
+    );
     final auth = ref.read(authStateProvider);
     if (auth.hasError && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error.toString()), backgroundColor: MyloColors.danger));
-    } else if (auth.value != null && mounted) {
-      context.go('/auth/verify-email');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(auth.error.toString()), backgroundColor: MyloColors.danger),
+      );
     }
+    // Navigation handled by router redirect when auth.value != null
   }
 
   @override
@@ -42,23 +58,55 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             key: _formKey,
             child: Column(
               children: [
-                TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Nama Lengkap'), validator: (v) => v!.isEmpty ? 'Nama wajib diisi' : null),
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Nama Lengkap'),
+                  validator: (v) => v == null || v.isEmpty ? 'Nama wajib diisi' : null,
+                ),
                 const SizedBox(height: 12),
-                TextFormField(controller: _userCtrl, decoration: const InputDecoration(labelText: 'Username'), validator: (v) => v!.length < 3 ? 'Minimal 3 karakter' : null),
+                TextFormField(
+                  controller: _userCtrl,
+                  decoration: const InputDecoration(labelText: 'Username'),
+                  validator: (v) => v == null || v.length < 3 ? 'Minimal 3 karakter' : null,
+                ),
                 const SizedBox(height: 12),
-                TextFormField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email'), validator: (v) => !v!.contains('@') ? 'Email tidak valid' : null),
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  validator: (v) => v == null || !v.contains('@') ? 'Email tidak valid' : null,
+                ),
                 const SizedBox(height: 12),
-                TextFormField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password'), validator: (v) => v!.length < 8 ? 'Minimal 8 karakter' : null),
+                TextFormField(
+                  controller: _passCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  validator: (v) => v == null || v.length < 8 ? 'Minimal 8 karakter' : null,
+                ),
                 const SizedBox(height: 12),
-                TextFormField(controller: _confirmCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Konfirmasi Password'), validator: (v) => v != _passCtrl.text ? 'Password tidak sama' : null),
+                TextFormField(
+                  controller: _confirmCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Konfirmasi Password'),
+                  validator: (v) => v != _passCtrl.text ? 'Password tidak sama' : null,
+                ),
                 const SizedBox(height: 24),
-                MButton(label: 'Daftar', onPressed: _register, isLoading: auth.isLoading, size: MButtonSize.large),
+                MButton(
+                  label: 'Daftar',
+                  onPressed: _register,
+                  isLoading: auth.isLoading,
+                  size: MButtonSize.large,
+                ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text('Sudah punya akun? ', style: TextStyle(color: MyloColors.textSecondary)),
-                    TextButton(onPressed: () => context.pop(), child: const Text('Masuk')),
+                    TextButton(
+                      // Fix: use go() instead of pop() — works regardless of navigation history
+                      onPressed: () => context.go('/auth/login'),
+                      child: const Text('Masuk'),
+                    ),
                   ],
                 ),
               ],
