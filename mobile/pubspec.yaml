@@ -1,44 +1,49 @@
 name: mylo
-description: Mylo Super App by Sphere — Everything in your Sphere
-version: 1.0.0+1
-publish_to: none
+  description: Mylo Super App by Sphere — Everything in your Sphere
+  version: 1.0.0+1
+  publish_to: none
 
-environment:
-  sdk: ">=3.0.0 <4.0.0"
+  environment:
+    sdk: ">=3.0.0 <4.0.0"
 
-dependencies:
+  dependencies:
+    flutter:
+      sdk: flutter
+
+    # HTTP & API
+    dio: ^5.8.0
+
+    # State management
+    flutter_riverpod: ^2.6.1
+
+    # Navigation
+    go_router: ^14.8.1
+
+    # Storage
+    flutter_secure_storage: ^9.2.4
+    hive_flutter: ^1.1.0
+
+    # WebSocket
+    web_socket_channel: ^3.0.2
+
+    # Firebase
+    firebase_core: ^3.8.0
+    firebase_messaging: ^15.1.5
+
+    # UI
+    cached_network_image: ^3.4.1
+    shimmer: ^3.0.0
+    image_picker: ^1.1.2
+
+    # Utils
+    timeago: ^3.7.0
+    uuid: ^4.5.1
+
+  dev_dependencies:
+    flutter_test:
+      sdk: flutter
+    flutter_lints: ^5.0.0
+
   flutter:
-    sdk: flutter
-
-  # HTTP & API
-  dio: ^5.8.0
-
-  # State management
-  flutter_riverpod: ^2.6.1
-
-  # Navigation
-  go_router: ^14.8.1
-
-  # Storage
-  flutter_secure_storage: ^9.2.4
-  hive_flutter: ^1.1.0
-
-  # WebSocket
-  web_socket_channel: ^3.0.2
-
-  # UI
-  cached_network_image: ^3.4.1
-  shimmer: ^3.0.0
-  image_picker: ^1.1.2
-
-  # Utils
-  timeago: ^3.7.0
-  uuid: ^4.5.1
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^5.0.0
-
-flutter:
-  uses-material-design: true
+    uses-material-design: true
+  
