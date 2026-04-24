@@ -5,6 +5,7 @@ import "dart:convert";
 
   class BrevoHelper {
     static final _apiKey = Platform.environment["BREVO_API_KEY"] ?? "";
+    static final _senderEmail = Platform.environment["BREVO_SENDER_EMAIL"] ?? "";
     static final _random = Random.secure();
 
     static String generateOtp() {
@@ -16,8 +17,8 @@ import "dart:convert";
       required String toName,
       required String otp,
     }) async {
-      if (_apiKey.isEmpty) {
-        print("WARNING: BREVO_API_KEY tidak disetel");
+      if (_apiKey.isEmpty || _senderEmail.isEmpty) {
+        print("WARNING: BREVO_API_KEY atau BREVO_SENDER_EMAIL belum disetel");
         return false;
       }
       try {
@@ -29,7 +30,7 @@ import "dart:convert";
             "content-type": "application/json",
           },
           body: jsonEncode({
-            "sender": {"name": "Mylo", "email": "noreply@mylo.app"},
+            "sender": {"name": "Mylo", "email": _senderEmail},
             "to": [{"email": toEmail, "name": toName}],
             "subject": "Kode Verifikasi Mylo: $otp",
             "htmlContent": """
