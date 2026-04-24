@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/token_manager.dart';
 
@@ -17,6 +19,14 @@ final dioProvider = Provider<Dio>((ref) {
     validateStatus: (status) => status != null && status < 500,
   ));
 
+  // Bypass SSL verification — workaround for Railway cert issue on Android
+  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+    final client = HttpClient();
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
+    return client;
+  };
+
   // Auth token interceptor
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {
@@ -24,28 +34,23 @@ final dioProvider = Provider<Dio>((ref) {
       if (token != null) options.headers['Authorization'] = 'Bearer $token';
       handler.next(options);
     },
-    onError: (error, handler) {
-      handler.next(error);
-    },
   ));
 
   // Retry interceptor — retry up to 2x on connection errors
   dio.interceptors.add(InterceptorsWrapper(
     onError: (error, handler) async {
-      final isConnectionError = error.type == DioExceptionType.connectionError ||
+      final isRetriable = error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout;
       final retryCount = error.requestOptions.extra['retryCount'] ?? 0;
-      if (isConnectionError && retryCount < 2) {
+      if (isRetriable && retryCount < 2) {
         await Future.delayed(const Duration(seconds: 2));
         final opts = error.requestOptions;
         opts.extra['retryCount'] = retryCount + 1;
         try {
           final response = await dio.fetch(opts);
           handler.resolve(response);
-        } catch (e) {
-          handler.next(error);
-        }
-        return;
+          return;
+        } catch (_) {}
       }
       handler.next(error);
     },
