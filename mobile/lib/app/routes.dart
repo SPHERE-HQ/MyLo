@@ -66,7 +66,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/auth/onboarding', builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
-      GoRoute(path: '/auth/verify-email', builder: (_, __) => const VerifyEmailScreen()),
+      GoRoute(
+        path: '/auth/verify-email',
+        builder: (_, state) => VerifyEmailScreen(
+          email: state.uri.queryParameters['email'] ?? '',
+        ),
+      ),
       GoRoute(path: '/auth/forgot-password', builder: (_, __) => const ForgotPasswordScreen()),
       GoRoute(
         path: '/auth/reset-password',
@@ -78,8 +83,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __, child) => HomeShell(child: child),
         routes: [
           GoRoute(path: '/home/chat', builder: (_, __) => const ChatListScreen()),
-          GoRoute(path: '/home/chat/:id',
-              builder: (_, s) => ChatRoomScreen(conversationId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/home/chat/:id',
+            builder: (_, s) => ChatRoomScreen(
+              conversationId: s.pathParameters['id']!,
+              otherUserName: s.uri.queryParameters['name'] ?? 'Chat',
+              otherUserAvatar: s.uri.queryParameters['avatar'],
+            ),
+          ),
           GoRoute(path: '/home/feed', builder: (_, __) => const FeedScreen()),
           GoRoute(path: '/home/explore', builder: (_, __) => const ExploreScreen()),
           GoRoute(path: '/home/wallet', builder: (_, __) => const WalletScreen()),

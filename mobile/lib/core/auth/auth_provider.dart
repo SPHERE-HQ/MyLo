@@ -94,6 +94,16 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     await TokenManager.clear();
     state = const AsyncValue.data(null);
   }
+
+  Future<void> refreshProfile() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.get('/auth/me');
+      state = AsyncValue.data(AuthUser.fromJson(res.data as Map<String, dynamic>));
+    } catch (_) {
+      // keep current state
+    }
+  }
 }
 
 final authStateProvider = AsyncNotifierProvider<AuthNotifier, AuthUser?>(() => AuthNotifier());
