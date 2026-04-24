@@ -1,5 +1,5 @@
 name: mylo_backend
-  description: Mylo Super App — Dart Frog Backend by Sphere
+  description: Mylo Super App — Dart Backend by Sphere
   version: 1.0.0
   publish_to: none
 
@@ -9,6 +9,8 @@ name: mylo_backend
   dependencies:
     shelf: ^1.4.0
     shelf_router: ^1.1.0
+    shelf_web_socket: ^2.0.0
+    web_socket_channel: ^3.0.2
     postgres: ^3.0.0
     bcrypt: ^1.1.0
     dart_jsonwebtoken: ^2.0.0
