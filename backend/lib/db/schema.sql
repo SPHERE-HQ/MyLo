@@ -1,7 +1,8 @@
--- Run this once to initialize the database
+-- Mylo DB schema. Jalankan sekali di Railway PostgreSQL console.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- ── USERS & AUTH ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -27,6 +28,25 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) NOT NULL,
+  code VARCHAR(10) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) NOT NULL,
+  code VARCHAR(10) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ── CHAT ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS chat_conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type VARCHAR(20) NOT NULL,
@@ -41,7 +61,8 @@ CREATE TABLE IF NOT EXISTS chat_members (
   conversation_id UUID REFERENCES chat_conversations(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   role VARCHAR(20) DEFAULT 'member',
-  joined_at TIMESTAMP DEFAULT NOW()
+  joined_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(conversation_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -58,6 +79,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── STORIES ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -69,6 +91,7 @@ CREATE TABLE IF NOT EXISTS stories (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── FEED & SOCIAL ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS feed_posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -106,6 +129,7 @@ CREATE TABLE IF NOT EXISTS follows (
   UNIQUE(follower_id, following_id)
 );
 
+-- ── EMAIL CLIENT ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS emails (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -124,6 +148,7 @@ CREATE TABLE IF NOT EXISTS emails (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── COMMUNITY ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS community_servers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
@@ -134,6 +159,15 @@ CREATE TABLE IF NOT EXISTS community_servers (
   is_public BOOLEAN DEFAULT true,
   invite_code VARCHAR(20) UNIQUE,
   created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS community_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  server_id UUID REFERENCES community_servers(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(20) DEFAULT 'member',
+  joined_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(server_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS community_channels (
@@ -160,6 +194,7 @@ CREATE TABLE IF NOT EXISTS community_messages (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── WALLET (skema saja, fitur Coming Soon) ────────────────
 CREATE TABLE IF NOT EXISTS wallet_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
@@ -172,7 +207,7 @@ CREATE TABLE IF NOT EXISTS wallet_accounts (
 
 CREATE TABLE IF NOT EXISTS wallet_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  wallet_id UUID REFERENCES wallet_accounts(id),
+  wallet_id UUID REFERENCES wallet_accounts(id) ON DELETE CASCADE,
   type VARCHAR(30) NOT NULL,
   amount DECIMAL(15,2) NOT NULL,
   fee DECIMAL(15,2) DEFAULT 0.00,
@@ -184,6 +219,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── NOTIFIKASI ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -195,6 +231,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ── CLOUD STORAGE ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_files (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -205,3 +242,28 @@ CREATE TABLE IF NOT EXISTS user_files (
   source VARCHAR(30),
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ── AI ASSISTANT ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ── INDEX ─────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_feed_posts_user ON feed_posts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id);
+CREATE INDEX IF NOT EXISTS idx_emails_user_folder ON emails(user_id, folder, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_community_messages_channel ON community_messages(channel_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_community_members_user ON community_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_files_user ON user_files(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stories_user_expires ON stories(user_id, expires_at);

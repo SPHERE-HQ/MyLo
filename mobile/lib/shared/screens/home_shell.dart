@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../app/theme.dart';
+import '../widgets/m_side_drawer.dart';
 
 class HomeShell extends StatelessWidget {
   final Widget child;
@@ -20,49 +20,35 @@ class HomeShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final idx = _selectedIndex(context);
     return Scaffold(
+      drawer: const MSideDrawer(),
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: idx,
         onDestinationSelected: (i) {
           switch (i) {
-            case 0:
-              context.go('/home/chat');
-            case 1:
-              context.go('/home/feed');
-            case 2:
-              context.go('/home/explore');
-            case 3:
-              context.go('/home/wallet');
-            case 4:
-              context.go('/home/profile');
+            case 0: context.go('/home/chat');
+            case 1: context.go('/home/feed');
+            case 2: context.go('/home/explore');
+            case 3: context.go('/home/wallet');
+            case 4: context.go('/home/profile');
           }
         },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Chat',
-          ),
+            selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
           NavigationDestination(
             icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view),
-            label: 'Feed',
-          ),
+            selectedIcon: Icon(Icons.grid_view), label: 'Feed'),
           NavigationDestination(
             icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore),
-            label: 'Explore',
-          ),
+            selectedIcon: Icon(Icons.explore), label: 'Explore'),
           NavigationDestination(
             icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Wallet',
-          ),
+            selectedIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profil',
-          ),
+            selectedIcon: Icon(Icons.person), label: 'Profil'),
         ],
       ),
     );

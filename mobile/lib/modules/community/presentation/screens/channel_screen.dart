@@ -1,11 +1,126 @@
 import 'package:flutter/material.dart';
-class ChannelScreen extends StatelessWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/theme.dart';
+import '../../../../core/api/api_client.dart';
+import '../../../../shared/widgets/m_avatar.dart';
+import '../../../../shared/widgets/m_empty_state.dart';
+import '../../../../shared/widgets/m_snackbar.dart';
+
+class ChannelScreen extends ConsumerStatefulWidget {
   final String serverId;
   final String channelId;
   const ChannelScreen({super.key, required this.serverId, required this.channelId});
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text('Channel $channelId')),
-    body: Center(child: Text('Server: $serverId')),
-  );
+  ConsumerState<ChannelScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<ChannelScreen> {
+  final _ctrl = TextEditingController();
+  final _scroll = ScrollController();
+  List<Map<String, dynamic>> _msgs = [];
+  bool _loading = true;
+  bool _sending = false;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final res = await ref.read(dioProvider).get('/community/channels/${widget.channelId}/messages');
+      if (mounted) setState(() { _msgs = (res.data as List).cast<Map<String, dynamic>>(); _loading = false; });
+    } catch (e) {
+      if (mounted) { setState(() => _loading = false); MSnackbar.error(context, 'Gagal memuat'); }
+    }
+  }
+
+  Future<void> _send() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    _ctrl.clear();
+    try {
+      await ref.read(dioProvider).post(
+        '/community/channels/${widget.channelId}/messages',
+        data: {'content': text},
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) MSnackbar.error(context, 'Gagal kirim');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('# channel')),
+      body: Column(children: [
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _msgs.isEmpty
+                  ? const MEmptyState(icon: Icons.chat_outlined,
+                      title: 'Belum ada pesan', subtitle: 'Mulai percakapan!')
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.all(MyloSpacing.md),
+                      itemCount: _msgs.length,
+                      itemBuilder: (_, i) {
+                        final m = _msgs[i];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            MAvatar(name: m['senderName'] ?? '?', url: m['senderAvatar']),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(m['senderName']?.toString() ?? '?',
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                if (m['content'] != null) Text(m['content'].toString()),
+                              ]),
+                            ),
+                          ]),
+                        );
+                      },
+                    ),
+        ),
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.all(MyloSpacing.sm),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? MyloColors.surfaceDark : MyloColors.surface,
+              border: const Border(top: BorderSide(color: MyloColors.border, width: 0.5)),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  decoration: InputDecoration(
+                    hintText: 'Pesan...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(MyloRadius.full),
+                      borderSide: BorderSide.none,
+                    ),
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? MyloColors.surfaceSecondaryDark : MyloColors.surfaceSecondary,
+                    filled: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _sending ? null : _send,
+                icon: const Icon(Icons.send),
+              ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
 }
