@@ -54,68 +54,62 @@ jobs:
           set -e
           cp google-services.json android/app/google-services.json
 
-          # --- Patch project-level build.gradle(.kts): tambah plugin classpath/declaration ---
-          PROJECT_GRADLE=""
-          if [ -f android/build.gradle.kts ]; then PROJECT_GRADLE="android/build.gradle.kts"; fi
-          if [ -z "$PROJECT_GRADLE" ] && [ -f android/build.gradle ]; then PROJECT_GRADLE="android/build.gradle"; fi
+          echo "=== Generated Android files ==="
+          ls -la android/
+          ls -la android/app/
 
-          if [ -n "$PROJECT_GRADLE" ]; then
-            if grep -q "com.google.gms.google-services" "$PROJECT_GRADLE"; then
-              echo "$PROJECT_GRADLE: already patched"
-            else
-              if [[ "$PROJECT_GRADLE" == *.kts ]]; then
-                printf '\n// Google Services plugin untuk Firebase\nplugins {\n    id("com.google.gms.google-services") version "4.4.2" apply false\n}\n' >> "$PROJECT_GRADLE"
-              else
-                printf '\napply plugin: %s\n' "'com.google.gms.google-services'" >> "$PROJECT_GRADLE"
-              fi
-              echo "$PROJECT_GRADLE: patched"
-            fi
-          fi
+          # === Detect file types (Flutter 3.27 may use .gradle or .kts) ===
+          SETTINGS=""
+          [ -f android/settings.gradle.kts ] && SETTINGS="android/settings.gradle.kts"
+          [ -z "$SETTINGS" ] && [ -f android/settings.gradle ] && SETTINGS="android/settings.gradle"
 
-          # --- Patch settings.gradle.kts (Flutter modern): tambah plugin di pluginManagement plugins block ---
-          if [ -f android/settings.gradle.kts ]; then
-            if ! grep -q "com.google.gms.google-services" android/settings.gradle.kts; then
-              # Sisipkan setelah baris dengan id("com.android.application")
+          APP_GRADLE=""
+          [ -f android/app/build.gradle.kts ] && APP_GRADLE="android/app/build.gradle.kts"
+          [ -z "$APP_GRADLE" ] && [ -f android/app/build.gradle ] && APP_GRADLE="android/app/build.gradle"
+
+          echo "Settings: $SETTINGS"
+          echo "App gradle: $APP_GRADLE"
+
+          # === 1) Declare plugin in settings.gradle pluginManagement plugins block ===
+          if [ -n "$SETTINGS" ] && ! grep -q "com.google.gms.google-services" "$SETTINGS"; then
+            if [[ "$SETTINGS" == *.kts ]]; then
+              # Kotlin DSL: id("com.android.application") -> insert after
               awk '
-                /id\("com.android.application"\)/ && !done {
-                  print
-                  print "    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false"
-                  done=1
-                  next
+                /id\("com\.android\.application"\)/ && !d {
+                  print; print "    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false"; d=1; next
                 }
                 { print }
-              ' android/settings.gradle.kts > android/settings.gradle.kts.new
-              mv android/settings.gradle.kts.new android/settings.gradle.kts
-              echo "settings.gradle.kts: patched"
+              ' "$SETTINGS" > "$SETTINGS.new" && mv "$SETTINGS.new" "$SETTINGS"
+            else
+              # Groovy DSL: id "com.android.application" -> insert after
+              awk '
+                /id ["'"'"']com\.android\.application["'"'"']/ && !d {
+                  print; print "    id \"com.google.gms.google-services\" version \"4.4.2\" apply false"; d=1; next
+                }
+                { print }
+              ' "$SETTINGS" > "$SETTINGS.new" && mv "$SETTINGS.new" "$SETTINGS"
             fi
+            echo "$SETTINGS: patched"
+            echo "--- $SETTINGS now ---"
+            cat "$SETTINGS"
           fi
 
-          # --- Patch app-level build.gradle(.kts): aktifkan plugin di apps's plugins block ---
-          APP_GRADLE=""
-          if [ -f android/app/build.gradle.kts ]; then APP_GRADLE="android/app/build.gradle.kts"; fi
-          if [ -z "$APP_GRADLE" ] && [ -f android/app/build.gradle ]; then APP_GRADLE="android/app/build.gradle"; fi
-
-          if [ -n "$APP_GRADLE" ]; then
-            if grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
-              echo "$APP_GRADLE: already patched"
+          # === 2) Apply plugin in app-level build.gradle plugins block ===
+          if [ -n "$APP_GRADLE" ] && ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
+            if [[ "$APP_GRADLE" == *.kts ]]; then
+              awk '
+                /^plugins[[:space:]]*\{/ && !d { print; print "    id(\"com.google.gms.google-services\")"; d=1; next }
+                { print }
+              ' "$APP_GRADLE" > "$APP_GRADLE.new" && mv "$APP_GRADLE.new" "$APP_GRADLE"
             else
-              if [[ "$APP_GRADLE" == *.kts ]]; then
-                # Insert id() inside the first plugins { block
-                awk '
-                  /^plugins[[:space:]]*\{/ && !done {
-                    print
-                    print "    id(\"com.google.gms.google-services\")"
-                    done=1
-                    next
-                  }
-                  { print }
-                ' "$APP_GRADLE" > "$APP_GRADLE.new"
-                mv "$APP_GRADLE.new" "$APP_GRADLE"
-              else
-                printf "\napply plugin: 'com.google.gms.google-services'\n" >> "$APP_GRADLE"
-              fi
-              echo "$APP_GRADLE: patched"
+              awk '
+                /^plugins[[:space:]]*\{/ && !d { print; print "    id \"com.google.gms.google-services\""; d=1; next }
+                { print }
+              ' "$APP_GRADLE" > "$APP_GRADLE.new" && mv "$APP_GRADLE.new" "$APP_GRADLE"
             fi
+            echo "$APP_GRADLE: patched"
+            echo "--- $APP_GRADLE now ---"
+            cat "$APP_GRADLE"
           fi
 
       - name: Install dependencies
