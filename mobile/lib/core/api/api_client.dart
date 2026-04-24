@@ -15,13 +15,20 @@ final dioProvider = Provider<Dio>((ref) {
     connectTimeout: const Duration(seconds: 30),
     receiveTimeout: const Duration(seconds: 30),
     sendTimeout: const Duration(seconds: 30),
-    headers: {'Content-Type': 'application/json'},
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
     validateStatus: (status) => status != null && status < 500,
   ));
 
-  // Bypass SSL verification — workaround for Railway cert issue on Android
+  // Force HTTP/1.1 (disable HTTP/2 ALPN negotiation) + bypass SSL cert
   (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-    final client = HttpClient();
+    final secCtx = SecurityContext(withTrustedRoots: true);
+    // Only advertise HTTP/1.1, not h2 — prevents HTTP/2 negotiation issues with Railway
+    secCtx.setAlpnProtocols(['http/1.1'], false);
+    final client = HttpClient(context: secCtx);
+    // Bypass bad certificate errors
     client.badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
     return client;
