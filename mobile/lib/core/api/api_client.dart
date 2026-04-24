@@ -44,14 +44,14 @@ Future<String?> _resolveViaDoh(String hostname) async {
   }
 }
 
-/// Wraps ConnectionTask<SecureSocket> as ConnectionTask<Socket>
-class _SecureSocketTask implements ConnectionTask<Socket> {
-  final ConnectionTask<SecureSocket> _inner;
-  _SecureSocketTask(this._inner);
+/// Wraps an already-connected Socket as a ConnectionTask<Socket>.
+class _CompletedSocketTask implements ConnectionTask<Socket> {
+  final Socket _socket;
+  _CompletedSocketTask(this._socket);
   @override
-  Future<Socket> get socket => _inner.socket;
+  Future<Socket> get socket => Future.value(_socket);
   @override
-  void cancel([Object? message]) => _inner.cancel(message);
+  void cancel([Object? message]) {}
 }
 
 final dioProvider = Provider<Dio>((ref) {
@@ -73,7 +73,8 @@ final dioProvider = Provider<Dio>((ref) {
     final client = HttpClient(context: secCtx);
     client.badCertificateCallback = (_, __, ___) => true;
 
-    // Override connection factory: resolve hostname via DoH, then connect directly by IP
+    // Override connection factory: resolve hostname via DoH, then connect
+    // directly by IP while keeping the original hostname as SNI.
     client.connectionFactory =
         (Uri uri, String? proxyHost, int? proxyPort) async {
       final host = uri.host;
@@ -81,10 +82,10 @@ final dioProvider = Provider<Dio>((ref) {
 
       // Resolve via DoH (fallback to hostname if DoH fails)
       final ip = await _resolveViaDoh(host);
-      final target = ip != null ? InternetAddress(ip) : host as dynamic;
+      final target = ip ?? host;
 
-      // Connect using resolved IP, but keep original hostname as SNI
-      final task = await SecureSocket.startConnect(
+      // SecureSocket.connect supports serverName (SNI) — required for Railway
+      final socket = await SecureSocket.connect(
         target,
         port,
         context: secCtx,
@@ -92,7 +93,7 @@ final dioProvider = Provider<Dio>((ref) {
         supportedProtocols: ['http/1.1'],
         serverName: host,
       );
-      return _SecureSocketTask(task);
+      return _CompletedSocketTask(socket);
     };
 
     return client;
