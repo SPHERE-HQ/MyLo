@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'token_manager.dart';
@@ -17,23 +18,25 @@ class AuthUser {
 }
 
 String _parseError(DioException e, String fallback) {
+  // Show full underlying error for debugging
+  final underlying = e.error != null ? '\n[${e.error.runtimeType}: ${e.error}]' : '';
   if (e.response != null) {
     final data = e.response!.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
-    if (data is String && data.isNotEmpty) return data;
-    return 'Server error ${e.response!.statusCode}';
+    if (data is String && data.isNotEmpty) return 'Server: $data';
+    return 'Server error ${e.response!.statusCode}$underlying';
   }
   switch (e.type) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
-      return 'Koneksi timeout — periksa jaringan kamu';
+      return 'Timeout$underlying';
     case DioExceptionType.connectionError:
-      return 'Tidak bisa terhubung ke server — pastikan internet aktif';
+      return 'Connection error$underlying';
     case DioExceptionType.badCertificate:
-      return 'Masalah sertifikat SSL';
+      return 'SSL error$underlying';
     default:
-      return '$fallback: ${e.message ?? 'unknown error'}';
+      return '$fallback: ${e.type.name}$underlying';
   }
 }
 
@@ -65,7 +68,7 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     } on DioException catch (e, s) {
       state = AsyncValue.error(_parseError(e, 'Login gagal'), s);
     } catch (e, s) {
-      state = AsyncValue.error('Login gagal: $e', s);
+      state = AsyncValue.error('Login error: $e', s);
     }
   }
 
@@ -83,7 +86,7 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     } on DioException catch (e, s) {
       state = AsyncValue.error(_parseError(e, 'Registrasi gagal'), s);
     } catch (e, s) {
-      state = AsyncValue.error('Registrasi gagal: $e', s);
+      state = AsyncValue.error('Register error: $e', s);
     }
   }
 
