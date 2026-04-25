@@ -78,6 +78,7 @@ Router buildRouter() {
   protected.get("/community/servers/<id>", _getServer);
   protected.post("/community/servers/<id>/join", _joinServer);
   protected.delete("/community/servers/<id>/leave", _leaveServer);
+  protected.get("/community/servers/<id>/members", _listServerMembers);
   protected.get("/community/servers/<id>/channels", _listChannels);
   protected.post("/community/servers/<id>/channels", _createChannel);
   protected.get("/community/channels/<id>/messages", _listChannelMessages);
@@ -954,6 +955,26 @@ Future<Response> _leaveServer(Request r, String id) async {
     parameters: {"s": id, "u": me},
   );
   return ok({"left": true});
+}
+
+Future<Response> _listServerMembers(Request r, String id) async {
+  final db = await getDb();
+  final res = await db.execute(
+    Sql.named("""SELECT u.id, u.username, u.display_name, u.avatar_url, cm.role
+                 FROM community_members cm
+                 JOIN users u ON u.id = cm.user_id
+                 WHERE cm.server_id = @id
+                 ORDER BY cm.role DESC, u.display_name"""),
+    parameters: {"id": id},
+  );
+  return ok(res.map((row) {
+    final m = row.toColumnMap();
+    return {
+      "id": m["id"], "username": m["username"],
+      "displayName": m["display_name"], "avatarUrl": m["avatar_url"],
+      "role": m["role"],
+    };
+  }).toList());
 }
 
 Future<Response> _listChannels(Request r, String id) async {
