@@ -44,6 +44,9 @@ dependencies:
   # WebView (browser module)
   webview_flutter: 4.7.0
 
+  # Video playback
+  video_player: ^2.9.2
+
   # Security
   local_auth: ^2.3.0
   crypto: ^3.0.3
