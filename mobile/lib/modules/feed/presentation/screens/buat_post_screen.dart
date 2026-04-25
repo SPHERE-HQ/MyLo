@@ -6,7 +6,6 @@ import 'dart:io';
   import 'package:uuid/uuid.dart';
   import '../../../../app/theme.dart';
   import '../../../../core/api/api_client.dart';
-  import '../../../../shared/widgets/m_button.dart';
   import '../../../../shared/widgets/m_snackbar.dart';
 
   class BuatPostScreen extends ConsumerStatefulWidget {
@@ -45,9 +44,12 @@ import 'dart:io';
         await Supabase.instance.client.storage
             .from('media')
             .uploadBinary(name, bytes,
-                fileOptions: FileOptions(contentType: 'image/$ext', upsert: true));
-        return Supabase.instance.client.storage.from('media').getPublicUrl(name);
-      } catch (e) {
+                fileOptions:
+                    FileOptions(contentType: 'image/$ext', upsert: true));
+        return Supabase.instance.client.storage
+            .from('media')
+            .getPublicUrl(name);
+      } catch (_) {
         return null;
       }
     }
@@ -63,7 +65,7 @@ import 'dart:io';
         final imageUrl = await _uploadImage();
         await ref.read(dioProvider).post('/feed', data: {
           'caption': caption,
-          if (imageUrl != null) 'imageUrl': imageUrl,
+          'mediaUrls': imageUrl != null ? [imageUrl] : [],
         });
         if (mounted) {
           MSnackbar.success(context, 'Postingan berhasil dibuat!');
@@ -84,15 +86,15 @@ import 'dart:io';
           title: const Text('Buat Postingan'),
           actions: [
             Padding(
-              padding: const EdgeInsets.only(right: MyloSpacing.sm),
+              padding: const EdgeInsets.only(right: 8),
               child: TextButton(
                 onPressed: _loading ? null : _submit,
                 child: _loading
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2))
                     : const Text('Post',
                         style: TextStyle(
                             color: MyloColors.primary,
@@ -127,7 +129,8 @@ import 'dart:io';
                 Stack(
                   children: [
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(MyloRadius.md),
+                      borderRadius:
+                          BorderRadius.circular(MyloRadius.md),
                       child: Image.file(
                         File(_image!.path),
                         width: double.infinity,
@@ -161,10 +164,13 @@ import 'dart:io';
                 label: Text(_image == null ? 'Tambah Foto' : 'Ganti Foto'),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
-                    color: isDark ? MyloColors.borderDark : MyloColors.border,
+                    color: isDark
+                        ? MyloColors.borderDark
+                        : MyloColors.border,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(MyloRadius.md),
+                    borderRadius:
+                        BorderRadius.circular(MyloRadius.md),
                   ),
                   minimumSize: const Size(double.infinity, 48),
                 ),
