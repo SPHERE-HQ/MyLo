@@ -194,7 +194,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               ),
             ),
             IconButton(icon: const Icon(Icons.bookmark_border), onPressed: _openBookmarks),
-            IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer()),
+            IconButton(icon: const Icon(Icons.history), onPressed: _openHistory),
           ]),
         ),
       ),

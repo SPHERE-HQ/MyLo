@@ -11,6 +11,7 @@ import "../helpers/jwt_helper.dart";
 import "../helpers/response_helper.dart";
 import "../middleware/auth_middleware.dart";
 import "extra_routes.dart";
+import "../helpers/fcm_sender.dart";
 
 const _uuid = Uuid();
 
@@ -575,6 +576,25 @@ Future<Response> _sendMessage(Request r, String id) async {
         "t": body["type"] ?? "text", "co": body["content"],
         "m": body["mediaUrl"], "r": body["replyToId"],
       },
+    );
+    // Push notification ke anggota lain (silent kalau FCM tidak dikonfigurasi).
+    final senderRows = await db.execute(
+      Sql.named("SELECT username, display_name FROM users WHERE id = @id"),
+      parameters: {"id": me},
+    );
+    final senderName = senderRows.isNotEmpty
+        ? (senderRows[0][1] as String? ?? senderRows[0][0] as String)
+        : "Pesan baru";
+    final preview = (body["content"] as String?)?.trim();
+    // ignore: unawaited_futures
+    FcmSender.sendToConversation(
+      conversationId: id,
+      exceptUserId: me,
+      title: senderName,
+      body: (preview == null || preview.isEmpty)
+          ? "[${body["type"] ?? "media"}]"
+          : (preview.length > 100 ? "${preview.substring(0, 100)}…" : preview),
+      data: {"type": "chat", "conversationId": id, "messageId": mid},
     );
     return created({"id": mid});
   } catch (e) {

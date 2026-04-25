@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'token_manager.dart';
 import '../api/api_client.dart';
+import '../notifications/fcm_service.dart';
 
 class AuthUser {
   final String id;
@@ -65,6 +66,9 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
       final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
       await TokenManager.saveUserId(user.id);
       state = AsyncValue.data(user);
+      // Daftarkan device FCM token ke backend (silent, tidak blokir login).
+      // ignore: unawaited_futures
+      FcmService.registerWithBackend(dio);
     } on DioException catch (e, s) {
       state = AsyncValue.error(_parseError(e, 'Login gagal'), s);
     } catch (e, s) {
@@ -83,6 +87,8 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
       await TokenManager.saveToken(data['token'] as String);
       final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
       state = AsyncValue.data(user);
+      // ignore: unawaited_futures
+      FcmService.registerWithBackend(dio);
     } on DioException catch (e, s) {
       state = AsyncValue.error(_parseError(e, 'Registrasi gagal'), s);
     } catch (e, s) {
@@ -91,6 +97,9 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
   }
 
   Future<void> logout() async {
+    try {
+      await FcmService.unregisterFromBackend(ref.read(dioProvider));
+    } catch (_) {}
     await TokenManager.clear();
     state = const AsyncValue.data(null);
   }
