@@ -51,9 +51,9 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
     setState(() => _creating = true);
     try {
       final res = await ref.read(dioProvider).post('/chat/conversations', data: {
-        'participantIds': _selected.map((u) => u['id']).toList(),
+        'memberIds': _selected.map((u) => u['id']).toList(),
         'name': name,
-        'isGroup': true,
+        'type': 'group',
       });
       final id = (res.data as Map)['id'] as String?;
       if (mounted && id != null) {
