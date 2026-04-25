@@ -19,7 +19,7 @@ Router buildRouter() {
   root.get("/", (Request r) => ok({"name": "Mylo Backend", "status": "ok"}));
   root.get("/health", (Request r) => ok({"status": "healthy"}));
 
-  // ── PUBLIC AUTH ────────────────────────────────────────
+  // ââ PUBLIC AUTH ââââââââââââââââââââââââââââââââââââââââ
   root.post("/auth/register", _register);
   root.post("/auth/login", _login);
   root.post("/auth/verify-email", _verifyEmail);
@@ -27,7 +27,7 @@ Router buildRouter() {
   root.post("/auth/forgot-password", _forgotPassword);
   root.post("/auth/reset-password", _resetPassword);
 
-  // ── PROTECTED ROUTES ───────────────────────────────────
+  // ââ PROTECTED ROUTES âââââââââââââââââââââââââââââââââââ
   final protected = Router();
 
   protected.get("/auth/me", _me);
@@ -96,7 +96,7 @@ Router buildRouter() {
   protected.post("/ai/chat", _aiChat);
   protected.delete("/ai/messages", _clearAiMessages);
 
-  // Wallet (Coming Soon — return 200 placeholder)
+  // Wallet (Coming Soon â return 200 placeholder)
   protected.get("/wallet", _walletStatus);
 
   // Notifications
@@ -109,9 +109,9 @@ Router buildRouter() {
   return root;
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // AUTH
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _register(Request r) async {
   try {
     final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
@@ -358,9 +358,9 @@ Future<Response> _changePassword(Request r) async {
   }
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // USERS
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listUsers(Request r) async {
   final q = r.url.queryParameters["q"] ?? "";
   final db = await getDb();
@@ -437,9 +437,9 @@ Future<Response> _userFollowing(Request r, String id) async {
   }).toList());
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // CHAT
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listConversations(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -591,9 +591,9 @@ Future<Response> _markRead(Request r, String id) async {
   return ok({"read": true});
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // STORIES
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listStories(Request r) async {
   final db = await getDb();
   final res = await db.execute("""
@@ -641,9 +641,9 @@ Future<Response> _deleteStory(Request r, String id) async {
   return ok({"deleted": true});
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // FEED
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listFeed(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -766,9 +766,9 @@ Future<Response> _addComment(Request r, String id) async {
   }
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // EMAIL CLIENT
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listEmails(Request r) async {
   final me = r.context["userId"] as String;
   final folder = r.url.queryParameters["folder"] ?? "inbox";
@@ -853,9 +853,9 @@ Future<Response> _deleteEmail(Request r, String id) async {
   return ok({"deleted": true});
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // COMMUNITY
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listServers(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -1012,9 +1012,9 @@ Future<Response> _sendChannelMessage(Request r, String id) async {
   }
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // BROWSER
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _browserFetch(Request r) async {
   final url = r.url.queryParameters["url"];
   if (url == null || !url.startsWith("http")) return badRequest("URL tidak valid");
@@ -1028,9 +1028,9 @@ Future<Response> _browserFetch(Request r) async {
   }
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // STORAGE
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listFiles(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -1076,9 +1076,9 @@ Future<Response> _deleteFile(Request r, String id) async {
   return ok({"deleted": true});
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // AI ASSISTANT
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listAiMessages(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -1094,56 +1094,84 @@ Future<Response> _listAiMessages(Request r) async {
 }
 
 Future<Response> _aiChat(Request r) async {
-  try {
-    final me = r.context["userId"] as String;
-    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
-    final userMsg = (body["message"] ?? "").toString().trim();
-    if (userMsg.isEmpty) return badRequest("Pesan tidak boleh kosong");
-    final db = await getDb();
-    await db.execute(
-      Sql.named("INSERT INTO ai_messages (id, user_id, role, content) VALUES (@id, @u, 'user', @c)"),
-      parameters: {"id": _uuid.v4(), "u": me, "c": userMsg},
-    );
+    try {
+      final me = r.context["userId"] as String;
+      final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+      final userMsg = (body["message"] ?? "").toString().trim();
+      if (userMsg.isEmpty) return badRequest("Pesan tidak boleh kosong");
+      final db = await getDb();
+      await db.execute(
+        Sql.named("INSERT INTO ai_messages (id, user_id, role, content) VALUES (@id, @u, 'user', @c)"),
+        parameters: {"id": _uuid.v4(), "u": me, "c": userMsg},
+      );
 
-    String reply;
-    final apiKey = Platform.environment["OPENAI_API_KEY"] ?? "";
-    if (apiKey.isNotEmpty) {
-      try {
-        final history = await db.execute(
-          Sql.named("SELECT role, content FROM ai_messages WHERE user_id=@u ORDER BY created_at DESC LIMIT 10"),
-          parameters: {"u": me},
-        );
-        final messages = [
-          {"role": "system", "content": "Kamu Mylo AI, asisten berbahasa Indonesia yang ramah dan singkat."},
-          ...history.map((row) {
+      String reply;
+      final apiKey = Platform.environment["GOOGLE_API_KEY"] ?? "";
+      if (apiKey.isNotEmpty) {
+        try {
+          final history = await db.execute(
+            Sql.named("SELECT role, content FROM ai_messages WHERE user_id=@u ORDER BY created_at DESC LIMIT 20"),
+            parameters: {"u": me},
+          );
+          // Build Gemini contents: convert "assistant" -> "model", skip consecutive same roles
+          final rawHistory = history.map((row) {
             final m = row.toColumnMap();
-            return {"role": m["role"], "content": m["content"]};
-          }).toList().reversed,
-        ];
-        final resp = await http.post(
-          Uri.parse("https://api.openai.com/v1/chat/completions"),
-          headers: {"Authorization": "Bearer $apiKey", "Content-Type": "application/json"},
-          body: jsonEncode({"model": "gpt-4o-mini", "messages": messages}),
-        ).timeout(const Duration(seconds: 25));
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        reply = (data["choices"][0]["message"]["content"] ?? "").toString();
-      } catch (e) {
-        reply = "Maaf, AI sedang tidak tersedia ($e). Coba lagi nanti.";
+            return {
+              "role": m["role"] == "assistant" ? "model" : "user",
+              "parts": [{"text": m["content"]}],
+            };
+          }).toList().reversed.toList();
+
+          // Ensure alternating roles (Gemini requirement), deduplicate if needed
+          final contents = <Map<String, dynamic>>[];
+          for (final msg in rawHistory) {
+            if (contents.isEmpty || contents.last["role"] != msg["role"]) {
+              contents.add(Map<String, dynamic>.from(msg));
+            }
+          }
+          // Last message must be from user
+          if (contents.isEmpty || contents.last["role"] != "user") {
+            contents.add({"role": "user", "parts": [{"text": userMsg}]});
+          }
+
+          final resp = await http.post(
+            Uri.parse(
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey",
+            ),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "systemInstruction": {
+                "parts": [{"text": "Kamu adalah Mylo AI, asisten super app Mylo berbahasa Indonesia. Jawab dengan ramah, singkat, dan membantu."}],
+              },
+              "contents": contents,
+            }),
+          ).timeout(const Duration(seconds: 30));
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final candidates = data["candidates"] as List?;
+          final parts = candidates?.isNotEmpty == true
+              ? (candidates!.first["content"]?["parts"] as List?)
+              : null;
+          reply = parts?.isNotEmpty == true
+              ? (parts!.first["text"] ?? "").toString()
+              : "Maaf, tidak ada respons dari AI.";
+        } catch (e) {
+          reply = "Maaf, AI sedang tidak tersedia. Coba lagi nanti.";
+        }
+      } else {
+        reply = "Halo! Saya Mylo AI. (Setel GOOGLE_API_KEY di Railway agar saya bisa menjawab cerdas.)";
       }
-    } else {
-      reply = "Halo! Saya Mylo AI. Pesanmu: \"$userMsg\". (Setel OPENAI_API_KEY agar saya bisa menjawab cerdas.)";
+
+      await db.execute(
+        Sql.named("INSERT INTO ai_messages (id, user_id, role, content) VALUES (@id, @u, 'assistant', @c)"),
+        parameters: {"id": _uuid.v4(), "u": me, "c": reply},
+      );
+      return ok({"reply": reply});
+    } catch (e) {
+      return serverError("AI error: $e");
     }
-
-    await db.execute(
-      Sql.named("INSERT INTO ai_messages (id, user_id, role, content) VALUES (@id, @u, 'assistant', @c)"),
-      parameters: {"id": _uuid.v4(), "u": me, "c": reply},
-    );
-    return ok({"reply": reply});
-  } catch (e) {
-    return serverError("AI error: $e");
   }
-}
 
+  
 Future<Response> _clearAiMessages(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
@@ -1151,9 +1179,9 @@ Future<Response> _clearAiMessages(Request r) async {
   return ok({"cleared": true});
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // WALLET (COMING SOON)
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _walletStatus(Request r) async {
   return ok({
     "status": "coming_soon",
@@ -1161,9 +1189,9 @@ Future<Response> _walletStatus(Request r) async {
   });
 }
 
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // NOTIFICATIONS
-// ════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 Future<Response> _listNotifications(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
