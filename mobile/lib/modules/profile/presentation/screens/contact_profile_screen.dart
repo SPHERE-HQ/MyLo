@@ -117,7 +117,7 @@ class _ContactProfileScreenState
                       MButton(
                         label: isFollowing ? 'Berhenti Ikuti' : 'Ikuti',
                         variant: isFollowing
-                            ? MButtonVariant.outline
+                            ? MButtonVariant.secondary
                             : MButtonVariant.primary,
                         isLoading: _followLoading,
                         onPressed: () => _toggleFollow(isFollowing),
@@ -126,7 +126,7 @@ class _ContactProfileScreenState
                       const SizedBox(width: 8),
                       MButton(
                         label: 'Chat',
-                        variant: MButtonVariant.outline,
+                        variant: MButtonVariant.secondary,
                         onPressed: () => _startChat(u),
                         size: MButtonSize.small,
                       ),
