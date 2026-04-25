@@ -357,6 +357,88 @@ Future<void> _runMigrations() async {
     )
   """);
 
+  // ─── REFRESH TOKENS ──────────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── 2FA SECRETS ─────────────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS two_factor_secrets (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      secret TEXT NOT NULL,
+      enabled BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── DEVICES (FCM tokens) ────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS devices (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT UNIQUE NOT NULL,
+      platform VARCHAR(20) DEFAULT 'android',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── AUDIT LOG ───────────────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id UUID PRIMARY KEY,
+      user_id UUID,
+      action VARCHAR(100) NOT NULL,
+      ip TEXT,
+      meta JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── BROWSER BOOKMARKS ───────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS browser_bookmarks (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      folder VARCHAR(50) DEFAULT 'default',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── BROWSER HISTORY ─────────────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS browser_history (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT,
+      url TEXT NOT NULL,
+      visited_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── NOTIFICATION PREFERENCES ────────────────────────────
+  await _db.execute("""
+    CREATE TABLE IF NOT EXISTS notification_prefs (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      prefs JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+
+  // ─── SESSIONS extras ─────────────────────────────────────
+  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device TEXT");
+  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip TEXT");
+  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ DEFAULT NOW()");
+
   // ─── INDEXES ─────────────────────────────────────────────
   await _db.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at DESC)");
   await _db.execute("CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id, created_at DESC)");
@@ -367,6 +449,11 @@ Future<void> _runMigrations() async {
   await _db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)");
   await _db.execute("CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id, expires_at)");
   await _db.execute("CREATE INDEX IF NOT EXISTS idx_comm_messages_channel ON community_messages(channel_id, created_at DESC)");
+  await _db.execute("CREATE INDEX IF NOT EXISTS idx_browser_history_user ON browser_history(user_id, visited_at DESC)");
+  await _db.execute("CREATE INDEX IF NOT EXISTS idx_browser_bookmarks_user ON browser_bookmarks(user_id, created_at DESC)");
+  await _db.execute("CREATE INDEX IF NOT EXISTS idx_emails_user_folder ON emails(user_id, folder, created_at DESC)");
+  await _db.execute("CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id)");
+  await _db.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at DESC)");
 
   print("Migrations complete");
 }

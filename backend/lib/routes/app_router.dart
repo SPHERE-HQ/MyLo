@@ -10,6 +10,7 @@ import "../helpers/brevo_helper.dart";
 import "../helpers/jwt_helper.dart";
 import "../helpers/response_helper.dart";
 import "../middleware/auth_middleware.dart";
+import "extra_routes.dart";
 
 const _uuid = Uuid();
 
@@ -104,6 +105,10 @@ Router buildRouter() {
   protected.get("/notifications", _listNotifications);
   protected.post("/notifications/<id>/read", _markNotifRead);
   protected.post("/notifications/read-all", _markAllNotifRead);
+
+  // Routes added in extra_routes.dart per spec (auth/2fa, sessions, browser bookmarks/history,
+  // email folders/search/star, community update, FCM device tokens, AI helpers, etc.)
+  registerExtraRoutes(protected);
 
   root.mount("/", Pipeline().addMiddleware(authMiddleware()).addHandler(protected.call));
 

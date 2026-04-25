@@ -22,6 +22,7 @@ dependencies:
   # Storage
   flutter_secure_storage: ^9.2.4
   hive_flutter: ^1.1.0
+  shared_preferences: ^2.3.3
 
   # WebSocket
   web_socket_channel: ^3.0.2
@@ -38,13 +39,24 @@ dependencies:
   shimmer: ^3.0.0
   image_picker: ^1.1.2
   mime: ^2.0.0
+  qr_flutter: ^4.1.0
 
   # WebView (browser module)
   webview_flutter: 4.7.0
 
+  # Security
+  local_auth: ^2.3.0
+  crypto: ^3.0.3
+
   # Utils
   timeago: ^3.7.0
   uuid: ^4.5.1
+  intl: ^0.19.0
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.2
+  permission_handler: ^11.3.1
+  connectivity_plus: ^6.1.0
+  package_info_plus: ^8.1.1
 
 dev_dependencies:
   flutter_test:
@@ -53,4 +65,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-

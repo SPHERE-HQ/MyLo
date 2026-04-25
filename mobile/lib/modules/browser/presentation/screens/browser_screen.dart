@@ -1,52 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../app/theme.dart';
+import '../../../../core/api/api_client.dart';
 import '../../../../shared/widgets/m_snackbar.dart';
+import 'bookmarks_screen.dart';
+import 'history_screen.dart';
 
-class _Bookmark {
-  final String title;
-  final String url;
-  const _Bookmark({required this.title, required this.url});
-}
-
-class _HistoryItem {
-  final String title;
-  final String url;
-  final DateTime visitedAt;
-  const _HistoryItem(
-      {required this.title, required this.url, required this.visitedAt});
-}
-
-final _bookmarksProvider =
-    StateNotifierProvider<_BookmarksNotifier, List<_Bookmark>>(
-        (_) => _BookmarksNotifier());
-
-final _historyProvider =
-    StateNotifierProvider<_HistoryNotifier, List<_HistoryItem>>(
-        (_) => _HistoryNotifier());
-
-class _BookmarksNotifier extends StateNotifier<List<_Bookmark>> {
-  _BookmarksNotifier() : super([]);
-  void add(String title, String url) {
-    if (state.any((b) => b.url == url)) return;
-    state = [_Bookmark(title: title, url: url), ...state];
-  }
-
-  void remove(String url) => state = state.where((b) => b.url != url).toList();
-  bool has(String url) => state.any((b) => b.url == url);
-}
-
-class _HistoryNotifier extends StateNotifier<List<_HistoryItem>> {
-  _HistoryNotifier() : super([]);
-  void add(String title, String url) {
-    state = [
-      _HistoryItem(title: title, url: url, visitedAt: DateTime.now()),
-      ...state.where((h) => h.url != url).take(49),
-    ];
-  }
-
-  void clear() => state = [];
+class _BrowserTab {
+  final String id;
+  final WebViewController controller;
+  String title;
+  String url;
+  _BrowserTab({required this.id, required this.controller, required this.title, required this.url});
 }
 
 class BrowserScreen extends ConsumerStatefulWidget {
@@ -56,313 +23,181 @@ class BrowserScreen extends ConsumerStatefulWidget {
 }
 
 class _BrowserScreenState extends ConsumerState<BrowserScreen> {
-  late final WebViewController _ctrl;
-  final _urlCtrl = TextEditingController(text: 'https://www.google.com');
-  String _currentUrl = 'https://www.google.com';
-  String _pageTitle = '';
-  bool _isLoading = false;
+  final List<_BrowserTab> _tabs = [];
+  int _active = 0;
+  final _urlCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _ctrl = WebViewController()
+    _addTab(initialUrl: 'https://www.google.com');
+  }
+
+  void _addTab({String initialUrl = 'https://www.google.com'}) {
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
       ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (u) {
+        onPageFinished: (url) async {
+          final title = await c.getTitle() ?? url;
+          if (!mounted) return;
           setState(() {
-            _isLoading = true;
-            _currentUrl = u;
-            _urlCtrl.text = u;
+            final idx = _tabs.indexWhere((t) => t.id == id);
+            if (idx >= 0) {
+              _tabs[idx].url = url;
+              _tabs[idx].title = title;
+              if (idx == _active) _urlCtrl.text = url;
+            }
           });
+          // sync to server history
+          try {
+            await ref.read(dioProvider).post('/browser/history', data: {'title': title, 'url': url});
+          } catch (_) {}
         },
-        onPageFinished: (u) async {
-          final title = await _ctrl.getTitle() ?? '';
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _pageTitle = title;
-            });
-            ref.read(_historyProvider.notifier).add(
-                title.isNotEmpty ? title : u, u);
-          }
-        },
-        onWebResourceError: (_) =>
-            setState(() => _isLoading = false),
       ))
-      ..loadRequest(Uri.parse('https://www.google.com'));
+      ..loadRequest(Uri.parse(initialUrl));
+    setState(() {
+      _tabs.add(_BrowserTab(id: id, controller: c, title: 'New Tab', url: initialUrl));
+      _active = _tabs.length - 1;
+      _urlCtrl.text = initialUrl;
+    });
   }
 
-  void _go([String? url]) {
-    var target = (url ?? _urlCtrl.text).trim();
-    if (!target.startsWith('http')) {
-      final isUrl = RegExp(r'^[\w\-]+(\.[\w\-]+)+').hasMatch(target);
-      target = isUrl
-          ? 'https://$target'
-          : 'https://www.google.com/search?q=${Uri.encodeQueryComponent(target)}';
+  void _closeTab(int idx) {
+    if (_tabs.length == 1) return;
+    setState(() {
+      _tabs.removeAt(idx);
+      if (_active >= _tabs.length) _active = _tabs.length - 1;
+      _urlCtrl.text = _tabs[_active].url;
+    });
+  }
+
+  void _go() {
+    var input = _urlCtrl.text.trim();
+    if (input.isEmpty) return;
+    if (!input.startsWith('http')) {
+      input = input.contains('.') && !input.contains(' ')
+          ? 'https://$input'
+          : 'https://www.google.com/search?q=${Uri.encodeQueryComponent(input)}';
     }
-    _urlCtrl.text = target;
-    _ctrl.loadRequest(Uri.parse(target));
+    _tabs[_active].controller.loadRequest(Uri.parse(input));
+    FocusScope.of(context).unfocus();
   }
 
-  void _toggleBookmark() {
-    final notifier = ref.read(_bookmarksProvider.notifier);
-    if (notifier.has(_currentUrl)) {
-      notifier.remove(_currentUrl);
-      MSnackbar.info(context, 'Bookmark dihapus');
-    } else {
-      notifier.add(_pageTitle.isNotEmpty ? _pageTitle : _currentUrl, _currentUrl);
-      MSnackbar.success(context, 'Ditambahkan ke bookmark');
+  Future<void> _bookmark() async {
+    final t = _tabs[_active];
+    try {
+      await ref.read(dioProvider).post('/browser/bookmarks',
+          data: {'title': t.title, 'url': t.url});
+      if (mounted) MSnackbar.show(context, 'Bookmark tersimpan');
+    } catch (e) {
+      if (mounted) MSnackbar.show(context, 'Gagal: $e');
     }
   }
 
-  void _showBookmarks() {
-    final bookmarks = ref.read(_bookmarksProvider);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (ctx, sc) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? MyloColors.surfaceDark
-                : Colors.white,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Bookmark',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            Expanded(
-              child: bookmarks.isEmpty
-                  ? const Center(
-                      child: Text('Belum ada bookmark',
-                          style: TextStyle(
-                              color: MyloColors.textSecondary)))
-                  : ListView.builder(
-                      controller: sc,
-                      itemCount: bookmarks.length,
-                      itemBuilder: (_, i) {
-                        final b = bookmarks[i];
-                        return ListTile(
-                          leading: const Icon(
-                              Icons.bookmark, color: MyloColors.primary),
-                          title: Text(b.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          subtitle: Text(b.url,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            onPressed: () {
-                              ref
-                                  .read(_bookmarksProvider.notifier)
-                                  .remove(b.url);
-                              Navigator.pop(context);
-                            },
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _go(b.url);
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ]),
-        ),
-      ),
+  Future<void> _openBookmarks() async {
+    final url = await Navigator.push<String?>(
+      context, MaterialPageRoute(builder: (_) => const BookmarksScreen()),
     );
+    if (url != null && url.isNotEmpty) _tabs[_active].controller.loadRequest(Uri.parse(url));
   }
 
-  void _showHistory() {
-    final history = ref.read(_historyProvider);
+  Future<void> _openHistory() async {
+    final url = await Navigator.push<String?>(
+      context, MaterialPageRoute(builder: (_) => const HistoryScreen()),
+    );
+    if (url != null && url.isNotEmpty) _tabs[_active].controller.loadRequest(Uri.parse(url));
+  }
+
+  void _showTabs() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (ctx, sc) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? MyloColors.surfaceDark
-                : Colors.white,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.all(MyloSpacing.lg),
+            child: Row(children: [
+              const Text('Tab Aktif', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Spacer(),
+              TextButton.icon(
+                  onPressed: () { Navigator.pop(context); _addTab(); },
+                  icon: const Icon(Icons.add), label: const Text('Tab baru')),
+            ]),
           ),
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-              child: Row(children: [
-                const Expanded(
-                  child: Text('Riwayat',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18)),
+          ...List.generate(_tabs.length, (i) => ListTile(
+                leading: const Icon(Icons.tab),
+                title: Text(_tabs[i].title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(_tabs[i].url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () { Navigator.pop(context); _closeTab(i); },
                 ),
-                TextButton(
-                  onPressed: () {
-                    ref.read(_historyProvider.notifier).clear();
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Hapus semua',
-                      style: TextStyle(color: MyloColors.danger)),
-                ),
-              ]),
-            ),
-            Expanded(
-              child: history.isEmpty
-                  ? const Center(
-                      child: Text('Belum ada riwayat',
-                          style: TextStyle(
-                              color: MyloColors.textSecondary)))
-                  : ListView.builder(
-                      controller: sc,
-                      itemCount: history.length,
-                      itemBuilder: (_, i) {
-                        final h = history[i];
-                        return ListTile(
-                          leading: const Icon(Icons.history,
-                              color: MyloColors.textSecondary),
-                          title: Text(h.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          subtitle: Text(h.url,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _go(h.url);
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ]),
-        ),
+                selected: i == _active,
+                onTap: () { setState(() { _active = i; _urlCtrl.text = _tabs[i].url; }); Navigator.pop(context); },
+              )),
+        ]),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bookmarks = ref.watch(_bookmarksProvider);
-    final isBookmarked = bookmarks.any((b) => b.url == _currentUrl);
+    final tab = _tabs[_active];
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 60,
-        title: SizedBox(
-          height: 40,
-          child: TextField(
-            controller: _urlCtrl,
-            keyboardType: TextInputType.url,
-            textInputAction: TextInputAction.go,
-            onSubmitted: (_) => _go(),
-            decoration: InputDecoration(
-              hintText: 'Cari atau ketik URL',
-              filled: true,
-              fillColor: Theme.of(context).brightness == Brightness.dark
-                  ? MyloColors.surfaceSecondaryDark
-                  : MyloColors.surfaceSecondary,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(MyloRadius.full),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16),
-              prefixIcon: const Icon(Icons.search, size: 18),
-            ),
-          ),
+        title: TextField(
+          controller: _urlCtrl,
+          textInputAction: TextInputAction.go,
+          onSubmitted: (_) => _go(),
+          decoration: const InputDecoration(hintText: 'Cari atau ketik URL', border: InputBorder.none),
         ),
         actions: [
-          IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => _ctrl.reload()),
-          PopupMenuButton(
-            icon: const Icon(Icons.more_vert),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                onTap: _showBookmarks,
-                child: const ListTile(
-                  leading: Icon(Icons.bookmark_outline),
-                  title: Text('Bookmark'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                onTap: _showHistory,
-                child: const ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('Riwayat'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: () => tab.controller.reload()),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              switch (v) {
+                case 'bookmark': _bookmark(); break;
+                case 'bookmarks': _openBookmarks(); break;
+                case 'history': _openHistory(); break;
+                case 'newtab': _addTab(); break;
+                case 'home': context.pop(); break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'newtab', child: Row(children: [Icon(Icons.add), SizedBox(width: 8), Text('Tab baru')])),
+              PopupMenuItem(value: 'bookmark', child: Row(children: [Icon(Icons.bookmark_add_outlined), SizedBox(width: 8), Text('Tambah bookmark')])),
+              PopupMenuItem(value: 'bookmarks', child: Row(children: [Icon(Icons.bookmarks_outlined), SizedBox(width: 8), Text('Bookmark')])),
+              PopupMenuItem(value: 'history', child: Row(children: [Icon(Icons.history), SizedBox(width: 8), Text('Riwayat')])),
             ],
           ),
         ],
       ),
-      body: Column(children: [
-        if (_isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(child: WebViewWidget(controller: _ctrl)),
-        SafeArea(
-          top: false,
-          child: Container(
-            height: 48,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? MyloColors.surfaceDark
-                  : MyloColors.surface,
-              border: const Border(
-                  top:
-                      BorderSide(color: MyloColors.border, width: 0.5)),
-            ),
-            child:
-                Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-              IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () async {
-                    if (await _ctrl.canGoBack()) _ctrl.goBack();
-                  }),
-              IconButton(
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () async {
-                    if (await _ctrl.canGoForward()) _ctrl.goForward();
-                  }),
-              IconButton(
-                  icon: const Icon(Icons.home),
-                  onPressed: () {
-                    _urlCtrl.text = 'https://www.google.com';
-                    _go();
-                  }),
-              IconButton(
-                icon: Icon(
-                    isBookmarked
-                        ? Icons.bookmark
-                        : Icons.bookmark_outline,
-                    color: isBookmarked ? MyloColors.primary : null),
-                onPressed: _toggleBookmark,
+      body: WebViewWidget(controller: tab.controller),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          height: 50,
+          decoration: const BoxDecoration(border: Border(top: BorderSide(color: MyloColors.border))),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+            IconButton(icon: const Icon(Icons.arrow_back), onPressed: () async {
+              if (await tab.controller.canGoBack()) tab.controller.goBack();
+            }),
+            IconButton(icon: const Icon(Icons.arrow_forward), onPressed: () async {
+              if (await tab.controller.canGoForward()) tab.controller.goForward();
+            }),
+            InkWell(
+              onTap: _showTabs,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(border: Border.all(color: MyloColors.primary, width: 2),
+                    borderRadius: BorderRadius.circular(4)),
+                child: Text('${_tabs.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
-              IconButton(
-                  icon: const Icon(Icons.history),
-                  onPressed: _showHistory),
-            ]),
-          ),
+            ),
+            IconButton(icon: const Icon(Icons.bookmark_border), onPressed: _openBookmarks),
+            IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer()),
+          ]),
         ),
-      ]),
+      ),
     );
   }
 }
