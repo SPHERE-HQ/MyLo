@@ -35,7 +35,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   void _addTab({String initialUrl = 'https://www.google.com'}) {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    final c = WebViewController()
+    final c = WebViewController();
+    c
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (url) async {
