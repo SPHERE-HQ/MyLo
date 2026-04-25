@@ -7,14 +7,18 @@ import '../../../../shared/widgets/m_avatar.dart';
 import '../../../../shared/widgets/m_empty_state.dart';
 import '../../../../shared/widgets/m_snackbar.dart';
 
+// Use String key "serverId|channelId" to avoid Map identity-equality issues
 final _channelInfoProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, Map<String, String>>(
-        (ref, ids) async {
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
+        (ref, key) async {
+  final parts = key.split('|');
+  final serverId = parts[0];
+  final channelId = parts[1];
   final res = await ref.read(dioProvider)
-      .get('/community/servers/${ids['serverId']}/channels');
+      .get('/community/servers/$serverId/channels');
   final list = (res.data as List).cast<Map<String, dynamic>>();
-  return list.firstWhere((c) => c['id'] == ids['channelId'],
-      orElse: () => {'name': 'channel', 'id': ids['channelId']!});
+  return list.firstWhere((c) => c['id'] == channelId,
+      orElse: () => {'name': 'channel', 'id': channelId});
 });
 
 class ChannelScreen extends ConsumerStatefulWidget {
@@ -96,10 +100,8 @@ class _S extends ConsumerState<ChannelScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final channelInfo = ref.watch(_channelInfoProvider({
-      'serverId': widget.serverId,
-      'channelId': widget.channelId,
-    }));
+    final providerKey = '${widget.serverId}|${widget.channelId}';
+    final channelInfo = ref.watch(_channelInfoProvider(providerKey));
     final channelName = channelInfo.when(
       loading: () => 'channel',
       error: (_, __) => 'channel',
