@@ -168,7 +168,7 @@ Future<Response> _exportAccountData(Request r) async {
   final db = await getDb();
   final user = await db.execute(Sql.named("SELECT id, username, email, display_name, bio, created_at FROM users WHERE id = @u"),
       parameters: {"u": uid});
-  final posts = await db.execute(Sql.named("SELECT id, caption, created_at FROM posts WHERE user_id = @u"),
+  final posts = await db.execute(Sql.named("SELECT id, caption, created_at FROM feed_posts WHERE user_id = @u"),
       parameters: {"u": uid});
   final follows = await db.execute(Sql.named("SELECT following_id FROM follows WHERE follower_id = @u"),
       parameters: {"u": uid});
@@ -248,7 +248,7 @@ Future<Response> _exploreFeed(Request r) async {
   final rows = await db.execute(Sql.named("""
     SELECT p.id, p.caption, p.media_urls, p.likes_count, p.comments_count, p.created_at,
            u.id, u.username, u.display_name, u.avatar_url
-    FROM posts p JOIN users u ON u.id = p.user_id
+    FROM feed_posts p JOIN users u ON u.id = p.user_id
     WHERE p.created_at > NOW() - INTERVAL '7 days' AND p.is_archived = FALSE
     ORDER BY p.likes_count DESC, p.created_at DESC LIMIT 50
   """));
@@ -272,7 +272,7 @@ Future<Response> _getPost(Request r, String id) async {
   final rows = await db.execute(Sql.named("""
     SELECT p.id, p.caption, p.media_urls, p.likes_count, p.comments_count, p.created_at,
            u.id, u.username, u.display_name, u.avatar_url
-    FROM posts p JOIN users u ON u.id = p.user_id WHERE p.id = @id
+    FROM feed_posts p JOIN users u ON u.id = p.user_id WHERE p.id = @id
   """), parameters: {"id": id});
   if (rows.isEmpty) return notFound("post not found");
   return ok(_postRow(rows.first));
@@ -303,7 +303,7 @@ Future<Response> _userPosts(Request r, String id) async {
   final rows = await db.execute(Sql.named("""
     SELECT p.id, p.caption, p.media_urls, p.likes_count, p.comments_count, p.created_at,
            u.id, u.username, u.display_name, u.avatar_url
-    FROM posts p JOIN users u ON u.id = p.user_id
+    FROM feed_posts p JOIN users u ON u.id = p.user_id
     WHERE p.user_id = @u AND p.is_archived = FALSE
     ORDER BY p.created_at DESC LIMIT 50
   """), parameters: {"u": id});
@@ -626,7 +626,7 @@ Future<Response> _aiSmartSearch(Request r) async {
     WHERE LOWER(username) LIKE @q OR LOWER(display_name) LIKE @q LIMIT 5
   """), parameters: {"q": like});
   final posts = await db.execute(Sql.named("""
-    SELECT id, caption FROM posts WHERE user_id IS NOT NULL AND LOWER(caption) LIKE @q LIMIT 5
+    SELECT id, caption FROM feed_posts WHERE user_id IS NOT NULL AND LOWER(caption) LIKE @q LIMIT 5
   """), parameters: {"q": like});
   final emails = await db.execute(Sql.named("""
     SELECT id, subject FROM emails WHERE user_id = @u AND
