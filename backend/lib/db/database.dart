@@ -1,6 +1,10 @@
 import "dart:io";
 import "package:postgres/postgres.dart";
 
+// Re-export Sql so files that import this database.dart can use Sql.named(...)
+// without needing a direct import on package:postgres.
+export "package:postgres/postgres.dart" show Sql;
+
 late Connection _db;
 
 Future<Connection> getDb() async => _db;
