@@ -31,7 +31,7 @@ class _ServerInviteScreenState extends ConsumerState<ServerInviteScreen> {
           .get('/community/servers/${widget.serverId}');
       final d = res.data as Map<String, dynamic>;
       setState(() {
-        _inviteCode = d['inviteCode'] as String? ??
+        _inviteCode = (d['inviteCode'] ?? d['invite_code']) as String? ??
             '${widget.serverId.substring(0, 8).toUpperCase()}';
         _loading = false;
       });
