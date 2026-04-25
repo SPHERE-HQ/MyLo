@@ -11,10 +11,23 @@ class AuthUser {
   final String email;
   final String? displayName;
   final String? avatarUrl;
-  AuthUser({required this.id, required this.username, required this.email, this.displayName, this.avatarUrl});
+  final String? bio;
+  final String? phone;
+  final int postsCount;
+  final int followersCount;
+  final int followingCount;
+  AuthUser({
+    required this.id, required this.username, required this.email,
+    this.displayName, this.avatarUrl, this.bio, this.phone,
+    this.postsCount = 0, this.followersCount = 0, this.followingCount = 0,
+  });
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
     id: j['id'], username: j['username'], email: j['email'],
     displayName: j['displayName'], avatarUrl: j['avatarUrl'],
+    bio: j['bio'], phone: j['phone'],
+    postsCount: (j['postsCount'] as num?)?.toInt() ?? 0,
+    followersCount: (j['followersCount'] as num?)?.toInt() ?? 0,
+    followingCount: (j['followingCount'] as num?)?.toInt() ?? 0,
   );
 }
 
