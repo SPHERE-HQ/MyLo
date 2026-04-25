@@ -1,70 +1,93 @@
 import 'package:flutter/material.dart';
-import '../../../../app/theme.dart';
+  import '../../../../app/theme.dart';
 
-class WalletScreen extends StatelessWidget {
-  const WalletScreen({super.key});
+  class WalletScreen extends StatelessWidget {
+    const WalletScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Wallet')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(MyloSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [MyloColors.primary, MyloColors.secondary],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    @override
+    Widget build(BuildContext context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Scaffold(
+        appBar: AppBar(title: const Text('Wallet')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: MyloSpacing.xxxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [MyloColors.primary, MyloColors.secondary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(MyloRadius.xl),
+                    boxShadow: [
+                      BoxShadow(
+                        color: MyloColors.primary.withOpacity(0.3),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(MyloRadius.xxl),
-                  boxShadow: [
-                    BoxShadow(color: MyloColors.primary.withOpacity(.3),
-                        blurRadius: 24, offset: const Offset(0, 8)),
-                  ],
+                  child: const Icon(Icons.account_balance_wallet_outlined,
+                      color: Colors.white, size: 64),
                 ),
-                child: const Icon(Icons.account_balance_wallet_rounded,
-                    size: 72, color: Colors.white),
-              ),
-              const SizedBox(height: MyloSpacing.xxl),
-              const Text('Coming Soon',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-              const SizedBox(height: MyloSpacing.md),
-              Text(
-                'Mylo Wallet sedang dalam pengembangan. Top-up, transfer, '
-                'QR pay, dan tagihan akan segera hadir.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14,
-                    color: Theme.of(context).brightness == Brightness.dark
+                const SizedBox(height: MyloSpacing.xxxl),
+                Text('E-Wallet Segera Hadir',
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: MyloSpacing.md),
+                Text(
+                  'Kami sedang mempersiapkan fitur dompet digital yang terintegrasi dengan Midtrans. '
+                  'Top up, transfer, dan bayar semua bisa dari satu tempat.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isDark
                         ? MyloColors.textSecondaryDark
-                        : MyloColors.textSecondary),
-              ),
-              const SizedBox(height: MyloSpacing.xxl),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: MyloColors.warning.withOpacity(.18),
-                  borderRadius: BorderRadius.circular(MyloRadius.full),
+                        : MyloColors.textSecondary,
+                    height: 1.6,
+                  ),
                 ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.schedule_rounded, size: 16, color: Color(0xFFB76E00)),
-                    SizedBox(width: 6),
-                    Text('Akan hadir di update berikutnya',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                            color: Color(0xFFB76E00))),
-                  ],
+                const SizedBox(height: MyloSpacing.xxl),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: MyloSpacing.lg, vertical: MyloSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: MyloColors.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(MyloRadius.full),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: MyloColors.accent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: MyloSpacing.sm),
+                      const Text(
+                        'Dalam pengembangan',
+                        style: TextStyle(
+                            color: MyloColors.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    }
   }
-}
+  
