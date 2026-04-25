@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "mylo-placeholder",
-    "storage_bucket": "mylo-placeholder.appspot.com"
+    "project_number": "1092322015473",
+    "project_id": "mylo-7d7ad",
+    "storage_bucket": "mylo-7d7ad.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:1092322015473:android:0c5156c077a2da05f79150",
         "android_client_info": {
           "package_name": "com.spherehq.mylo"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForBuildOnly000000000000000"
+          "current_key": "AIzaSyB2Mwig-S-LfVhJpcnlDioyCelqqGlnwws"
         }
       ],
       "services": {
