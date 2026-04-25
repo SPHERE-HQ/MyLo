@@ -56,14 +56,35 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     }
   }
 
+  String _serverErrorMessage(Response res, String fallback) {
+    final data = res.data;
+    if (data is Map) {
+      final msg = data['error'] ?? data['message'];
+      if (msg != null && msg.toString().isNotEmpty) return msg.toString();
+    }
+    if (data is String && data.isNotEmpty) return data;
+    return '$fallback (kode ${res.statusCode})';
+  }
+
   Future<void> login(String email, String password) async {
     state = const AsyncValue.loading();
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.post('/auth/login', data: {'email': email, 'password': password});
+      final status = res.statusCode ?? 0;
+      if (status >= 400 || res.data is! Map) {
+        state = AsyncValue.error(_serverErrorMessage(res, 'Login gagal'), StackTrace.current);
+        return;
+      }
       final data = res.data as Map<String, dynamic>;
-      await TokenManager.saveToken(data['token'] as String);
-      final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
+      final token = data['token'];
+      final userJson = data['user'];
+      if (token is! String || userJson is! Map) {
+        state = AsyncValue.error('Respons login tidak valid dari server', StackTrace.current);
+        return;
+      }
+      await TokenManager.saveToken(token);
+      final user = AuthUser.fromJson(Map<String, dynamic>.from(userJson));
       await TokenManager.saveUserId(user.id);
       state = AsyncValue.data(user);
       // Daftarkan device FCM token ke backend (silent, tidak blokir login).
@@ -83,9 +104,21 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
       final res = await dio.post('/auth/register', data: {
         'username': username, 'email': email, 'password': password, 'displayName': displayName,
       });
+      final status = res.statusCode ?? 0;
+      if (status >= 400 || res.data is! Map) {
+        state = AsyncValue.error(_serverErrorMessage(res, 'Registrasi gagal'), StackTrace.current);
+        return;
+      }
       final data = res.data as Map<String, dynamic>;
-      await TokenManager.saveToken(data['token'] as String);
-      final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
+      final token = data['token'];
+      final userJson = data['user'];
+      if (token is! String || userJson is! Map) {
+        state = AsyncValue.error('Respons registrasi tidak valid dari server', StackTrace.current);
+        return;
+      }
+      await TokenManager.saveToken(token);
+      final user = AuthUser.fromJson(Map<String, dynamic>.from(userJson));
+      await TokenManager.saveUserId(user.id);
       state = AsyncValue.data(user);
       // ignore: unawaited_futures
       FcmService.registerWithBackend(dio);
