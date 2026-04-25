@@ -11,6 +11,7 @@ import "../helpers/jwt_helper.dart";
 import "../helpers/response_helper.dart";
 import "../middleware/auth_middleware.dart";
 import "extra_routes.dart";
+import "google_auth.dart";
 import "../helpers/fcm_sender.dart";
 
 const _uuid = Uuid();
@@ -24,6 +25,7 @@ Router buildRouter() {
   // Ã¢ÂÂÃ¢ÂÂ PUBLIC AUTH Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   root.post("/auth/register", _register);
   root.post("/auth/login", _login);
+  registerGoogleAuth(root);
   root.post("/auth/verify-email", _verifyEmail);
   root.post("/auth/resend-otp", _resendOtp);
   root.post("/auth/forgot-password", _forgotPassword);
@@ -1174,27 +1176,42 @@ Future<Response> _aiChat(Request r) async {
       );
 
       String reply;
-      final apiKey = Platform.environment["GOOGLE_API_KEY"] ?? "";
+      final apiKey = Platform.environment["GOOGLE_API_KEY"] ??
+          Platform.environment["GEMINI_API_KEY"] ?? "";
+      final model = Platform.environment["GEMINI_MODEL"] ?? "gemini-2.0-flash";
       if (apiKey.isNotEmpty) {
         try {
           final history = await db.execute(
             Sql.named("SELECT role, content FROM ai_messages WHERE user_id=@u ORDER BY created_at DESC LIMIT 20"),
             parameters: {"u": me},
           );
-          // Build Gemini contents: convert "assistant" -> "model", skip consecutive same roles
+          // Build Gemini contents: convert "assistant" -> "model", skip
+          // consecutive same roles, and skip our own error placeholders so
+          // they do not poison future conversations.
+          const errorMarkers = [
+            "Maaf, tidak ada respons dari AI",
+            "Maaf, AI sedang tidak tersedia",
+            "Halo! Saya Mylo AI. (Setel",
+          ];
           final rawHistory = history.map((row) {
             final m = row.toColumnMap();
             return {
               "role": m["role"] == "assistant" ? "model" : "user",
-              "parts": [{"text": m["content"]}],
+              "text": (m["content"] ?? "").toString(),
             };
-          }).toList().reversed.toList();
+          }).toList().reversed.toList()
+            ..removeWhere((m) =>
+                m["role"] == "model" &&
+                errorMarkers.any((mark) => (m["text"] as String).startsWith(mark)));
 
           // Ensure alternating roles (Gemini requirement), deduplicate if needed
           final contents = <Map<String, dynamic>>[];
           for (final msg in rawHistory) {
             if (contents.isEmpty || contents.last["role"] != msg["role"]) {
-              contents.add(Map<String, dynamic>.from(msg));
+              contents.add({
+                "role": msg["role"],
+                "parts": [{"text": msg["text"]}],
+              });
             }
           }
           // Last message must be from user
@@ -1204,7 +1221,7 @@ Future<Response> _aiChat(Request r) async {
 
           final resp = await http.post(
             Uri.parse(
-              "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey",
+              "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey",
             ),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode({
@@ -1214,15 +1231,29 @@ Future<Response> _aiChat(Request r) async {
               "contents": contents,
             }),
           ).timeout(const Duration(seconds: 30));
-          final data = jsonDecode(resp.body) as Map<String, dynamic>;
-          final candidates = data["candidates"] as List?;
-          final parts = candidates?.isNotEmpty == true
-              ? (candidates!.first["content"]?["parts"] as List?)
-              : null;
-          reply = parts?.isNotEmpty == true
-              ? (parts!.first["text"] ?? "").toString()
-              : "Maaf, tidak ada respons dari AI.";
+          if (resp.statusCode >= 400) {
+            print("Gemini error ${resp.statusCode}: ${resp.body}");
+            reply = "Maaf, AI sedang sibuk (HTTP ${resp.statusCode}). Coba lagi sebentar.";
+          } else {
+            final data = jsonDecode(resp.body) as Map<String, dynamic>;
+            final candidates = data["candidates"] as List?;
+            if (candidates == null || candidates.isEmpty) {
+              final reason = data["promptFeedback"]?["blockReason"];
+              reply = reason != null
+                  ? "Maaf, pertanyaan diblokir oleh filter keamanan ($reason)."
+                  : "Maaf, AI tidak menghasilkan jawaban. Coba ubah pertanyaan.";
+            } else {
+              final parts = candidates.first["content"]?["parts"] as List?;
+              final text = parts != null && parts.isNotEmpty
+                  ? (parts.first["text"] ?? "").toString().trim()
+                  : "";
+              reply = text.isNotEmpty
+                  ? text
+                  : "Maaf, AI tidak menghasilkan jawaban. Coba ubah pertanyaan.";
+            }
+          }
         } catch (e) {
+          print("Gemini call failed: $e");
           reply = "Maaf, AI sedang tidak tersedia. Coba lagi nanti.";
         }
       } else {

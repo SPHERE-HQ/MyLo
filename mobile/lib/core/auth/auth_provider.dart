@@ -59,13 +59,40 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
   Future<AuthUser?> build() async {
     final token = await TokenManager.getToken();
     if (token == null) return null;
+
+    // Build a minimal AuthUser from cached id so the user is logged in
+    // immediately on cold start, even if /auth/me is briefly unreachable
+    // (network blip, backend cold-boot, transient 5xx, ...). We only force
+    // a logout when the server explicitly rejects the token (401/403).
+    final cachedId = await TokenManager.getUserId();
+    final cached = cachedId != null
+        ? AuthUser(id: cachedId, username: '', email: '')
+        : null;
+
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.get('/auth/me');
-      return AuthUser.fromJson(res.data as Map<String, dynamic>);
+      final data = res.data;
+      final status = res.statusCode ?? 0;
+      if (status == 401 || status == 403) {
+        await TokenManager.clear();
+        return null;
+      }
+      if (data is Map<String, dynamic>) {
+        return AuthUser.fromJson(data);
+      }
+      // Anything else (5xx, HTML, ...) → keep the cached session.
+      return cached;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode ?? 0;
+      if (code == 401 || code == 403) {
+        await TokenManager.clear();
+        return null;
+      }
+      // Network error / 5xx: keep the user signed in with cached data.
+      return cached;
     } catch (_) {
-      await TokenManager.clear();
-      return null;
+      return cached;
     }
   }
 
@@ -142,6 +169,39 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     }
   }
 
+  /// Sign in / sign up with a Google ID token obtained on the device via the
+  /// `google_sign_in` package. The backend verifies the token with Google and
+  /// returns our own JWT.
+  Future<void> loginWithGoogle(String idToken) async {
+    state = const AsyncValue.loading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post('/auth/google', data: {'idToken': idToken});
+      final status = res.statusCode ?? 0;
+      if (status >= 400 || res.data is! Map) {
+        state = AsyncValue.error(_serverErrorMessage(res, 'Login Google gagal'), StackTrace.current);
+        return;
+      }
+      final data = res.data as Map<String, dynamic>;
+      final token = data['token'];
+      final userJson = data['user'];
+      if (token is! String || userJson is! Map) {
+        state = AsyncValue.error('Respons login Google tidak valid', StackTrace.current);
+        return;
+      }
+      await TokenManager.saveToken(token);
+      final user = AuthUser.fromJson(Map<String, dynamic>.from(userJson));
+      await TokenManager.saveUserId(user.id);
+      state = AsyncValue.data(user);
+      // ignore: unawaited_futures
+      FcmService.registerWithBackend(dio);
+    } on DioException catch (e, s) {
+      state = AsyncValue.error(_parseError(e, 'Login Google gagal'), s);
+    } catch (e, s) {
+      state = AsyncValue.error('Login Google error: $e', s);
+    }
+  }
+
   Future<void> logout() async {
     try {
       await FcmService.unregisterFromBackend(ref.read(dioProvider));
@@ -154,7 +214,9 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.get('/auth/me');
-      state = AsyncValue.data(AuthUser.fromJson(res.data as Map<String, dynamic>));
+      if (res.data is Map<String, dynamic>) {
+        state = AsyncValue.data(AuthUser.fromJson(res.data as Map<String, dynamic>));
+      }
     } catch (_) {
       // keep current state
     }
