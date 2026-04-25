@@ -10,8 +10,14 @@ import 'core/notifications/fcm_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Firebase.initializeApp();
-  await FcmService.init();
+  // Firebase opsional — kalau google-services.json placeholder atau invalid,
+  // app tetap jalan. FCM akan silent-fail di FcmService.init().
+  try {
+    await Firebase.initializeApp();
+    await FcmService.init();
+  } catch (_) {
+    // Lanjut tanpa Firebase (push notification nonaktif).
+  }
   timeago.setLocaleMessages('id', timeago.IdMessages());
   await Supabase.initialize(
     url: 'https://rfspqocehezwcqjpremr.supabase.co',
