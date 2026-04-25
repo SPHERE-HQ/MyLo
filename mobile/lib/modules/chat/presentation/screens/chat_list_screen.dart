@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/api/api_client.dart';
+import '../../../../core/auth/auth_provider.dart';
 import '../../../../shared/widgets/m_avatar.dart';
 import '../../../../shared/widgets/m_empty_state.dart';
 import '../../../../shared/widgets/m_loading_skeleton.dart';
@@ -46,19 +47,47 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     setState(() => _startingChat = true);
     try {
       final res = await ref.read(dioProvider).post('/chat/conversations', data: {
-        'participantIds': [user['id']],
+        'type': 'private',
+        'memberIds': [user['id']],
       });
       final id = (res.data as Map)['id'] as String?;
       if (mounted && id != null) {
         setState(() { _showSearch = false; _searchQuery = ''; _searchCtrl.clear(); });
+        ref.invalidate(conversationsProvider);
         final name = (user['displayName'] ?? user['username'] ?? 'Chat').toString();
         context.push('/home/chat/$id?name=${Uri.encodeComponent(name)}&avatar=${user['avatarUrl'] ?? ''}');
+      } else if (mounted) {
+        MSnackbar.error(context, 'Gagal membuka chat: respons tidak valid');
       }
     } catch (e) {
       if (mounted) MSnackbar.error(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _startingChat = false);
     }
+  }
+
+  String _convDisplayName(Map<String, dynamic> c, String myId) {
+    if (c['type'] == 'private') {
+      final members = (c['members'] as List?) ?? const [];
+      for (final m in members) {
+        if (m is Map && m['id'] != myId) {
+          return (m['displayName'] ?? m['username'] ?? 'Chat').toString();
+        }
+      }
+    }
+    return (c['name'] ?? 'Percakapan').toString();
+  }
+
+  String? _convAvatarUrl(Map<String, dynamic> c, String myId) {
+    if (c['type'] == 'private') {
+      final members = (c['members'] as List?) ?? const [];
+      for (final m in members) {
+        if (m is Map && m['id'] != myId) {
+          return m['avatarUrl'] as String?;
+        }
+      }
+    }
+    return c['avatarUrl'] as String?;
   }
 
   @override
@@ -170,6 +199,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   }
 
   Widget _buildConversationList(AsyncValue<dynamic> convs) {
+    final myId = ref.watch(authStateProvider).valueOrNull?.id ?? '';
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(conversationsProvider),
       child: convs.when(
@@ -207,13 +237,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       c['lastMessage'] as Map<String, dynamic>?;
                   final unread =
                       (c['unreadCount'] as num?)?.toInt() ?? 0;
+                  final dispName = _convDisplayName(c, myId);
+                  final dispAvatar = _convAvatarUrl(c, myId);
                   return ListTile(
                     leading: MAvatar(
-                        name: c['name'] ?? 'Chat',
-                        url: c['avatarUrl'],
+                        name: dispName,
+                        url: dispAvatar,
                         size: MAvatarSize.md),
                     title: Text(
-                      c['name'] ?? 'Percakapan',
+                      dispName,
                       style: TextStyle(
                         fontWeight: unread > 0
                             ? FontWeight.bold
@@ -248,9 +280,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                           )
                         : null,
                     onTap: () {
-                      final name = (c['name'] ?? 'Chat').toString();
                       context.push(
-                          '/home/chat/${c['id']}?name=${Uri.encodeComponent(name)}&avatar=${c['avatarUrl'] ?? ''}');
+                          '/home/chat/${c['id']}?name=${Uri.encodeComponent(dispName)}&avatar=${dispAvatar ?? ''}');
                     },
                   );
                 },

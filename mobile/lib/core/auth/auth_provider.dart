@@ -169,39 +169,6 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     }
   }
 
-  /// Sign in / sign up with a Google ID token obtained on the device via the
-  /// `google_sign_in` package. The backend verifies the token with Google and
-  /// returns our own JWT.
-  Future<void> loginWithGoogle(String idToken) async {
-    state = const AsyncValue.loading();
-    try {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post('/auth/google', data: {'idToken': idToken});
-      final status = res.statusCode ?? 0;
-      if (status >= 400 || res.data is! Map) {
-        state = AsyncValue.error(_serverErrorMessage(res, 'Login Google gagal'), StackTrace.current);
-        return;
-      }
-      final data = res.data as Map<String, dynamic>;
-      final token = data['token'];
-      final userJson = data['user'];
-      if (token is! String || userJson is! Map) {
-        state = AsyncValue.error('Respons login Google tidak valid', StackTrace.current);
-        return;
-      }
-      await TokenManager.saveToken(token);
-      final user = AuthUser.fromJson(Map<String, dynamic>.from(userJson));
-      await TokenManager.saveUserId(user.id);
-      state = AsyncValue.data(user);
-      // ignore: unawaited_futures
-      FcmService.registerWithBackend(dio);
-    } on DioException catch (e, s) {
-      state = AsyncValue.error(_parseError(e, 'Login Google gagal'), s);
-    } catch (e, s) {
-      state = AsyncValue.error('Login Google error: $e', s);
-    }
-  }
-
   Future<void> logout() async {
     try {
       await FcmService.unregisterFromBackend(ref.read(dioProvider));

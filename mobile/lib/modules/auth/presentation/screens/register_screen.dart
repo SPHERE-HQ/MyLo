@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/auth/auth_provider.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/widgets/m_button.dart';
-import '../../../../shared/widgets/google_sign_in_button.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -98,8 +97,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   isLoading: auth.isLoading,
                   size: MButtonSize.large,
                 ),
-                const OrDivider(),
-                const GoogleSignInButton(label: 'Daftar dengan Google'),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

@@ -29,8 +29,11 @@ class _S extends ConsumerState<BiometricScreen> {
 
   Future<void> _toggle(bool v) async {
     if (v) {
-      final ok = await BiometricService.authenticate('Aktifkan masuk dengan biometrik');
-      if (!ok) { if (mounted) MSnackbar.show(context, 'Verifikasi gagal'); return; }
+      final r = await BiometricService.authenticateDetailed('Aktifkan masuk dengan biometrik');
+      if (!r.ok) {
+        if (mounted) MSnackbar.error(context, r.error ?? 'Verifikasi gagal');
+        return;
+      }
     }
     await BiometricService.setEnabled(v);
     setState(() => _enabled = v);

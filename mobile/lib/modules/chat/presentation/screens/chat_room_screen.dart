@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../../core/api/api_client.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/widgets/m_avatar.dart';
+import '../../../../shared/widgets/m_snackbar.dart';
 
 const _storage = FlutterSecureStorage();
 
@@ -43,7 +44,20 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   Future<void> _loadHistory() async {
     try {
       final res = await ref.read(dioProvider).get('/chat/conversations/${widget.conversationId}/messages');
-      setState(() => _messages = List<Map<String, dynamic>>.from(res.data['messages'] as List));
+      // Backend returns a JSON list of messages directly.
+      final data = res.data;
+      List<dynamic> raw;
+      if (data is List) {
+        raw = data;
+      } else if (data is Map && data['messages'] is List) {
+        raw = data['messages'] as List;
+      } else {
+        raw = const [];
+      }
+      setState(() => _messages = raw
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList());
       _scrollToBottom();
     } catch (_) {}
   }
@@ -67,7 +81,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           setState(() => _otherTyping = true);
           Future.delayed(const Duration(seconds: 3), () { if (mounted) setState(() => _otherTyping = false); });
         }
+      } else if (type == 'error') {
+        if (mounted) {
+          MSnackbar.error(context, (data['message'] ?? 'Terjadi kesalahan').toString());
+        }
       }
+    }, onError: (e) {
+      if (mounted) setState(() => _connected = false);
+    }, onDone: () {
+      if (mounted) setState(() => _connected = false);
     });
     _ws!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
   }
@@ -80,7 +102,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   void _sendMessage() {
     final text = _ctrl.text.trim();
-    if (text.isEmpty || !_connected) return;
+    if (text.isEmpty) return;
+    if (!_connected) {
+      MSnackbar.error(context, 'Belum terhubung. Coba lagi sebentar.');
+      return;
+    }
     _ws!.sink.add(jsonEncode({'type': 'message', 'content': text, 'msgType': 'text'}));
     _ctrl.clear(); _isTyping = false;
   }

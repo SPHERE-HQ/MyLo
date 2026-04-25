@@ -52,7 +52,6 @@ dependencies:
   crypto: ^3.0.3
 
   # Google Sign-In
-  google_sign_in: ^6.2.2
 
   # Utils
   timeago: ^3.7.0

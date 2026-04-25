@@ -11,7 +11,6 @@ import "../helpers/jwt_helper.dart";
 import "../helpers/response_helper.dart";
 import "../middleware/auth_middleware.dart";
 import "extra_routes.dart";
-import "google_auth.dart";
 import "../helpers/fcm_sender.dart";
 
 const _uuid = Uuid();
@@ -25,7 +24,6 @@ Router buildRouter() {
   // Ã¢ÂÂÃ¢ÂÂ PUBLIC AUTH Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   root.post("/auth/register", _register);
   root.post("/auth/login", _login);
-  registerGoogleAuth(root);
   root.post("/auth/verify-email", _verifyEmail);
   root.post("/auth/resend-otp", _resendOtp);
   root.post("/auth/forgot-password", _forgotPassword);
@@ -723,19 +721,43 @@ Future<Response> _listFeed(Request r) async {
 Future<Response> _createPost(Request r) async {
   try {
     final me = r.context["userId"] as String;
-    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+    final raw = await r.readAsString();
+    final body = (raw.isEmpty ? <String, dynamic>{} : jsonDecode(raw)) as Map<String, dynamic>;
+
+    // Accept either a list of URLs (mediaUrls) or a single legacy imageUrl.
+    final mediaList = <String>[];
+    final m = body["mediaUrls"];
+    if (m is List) {
+      for (final v in m) {
+        if (v != null) mediaList.add(v.toString());
+      }
+    }
+    final singleImage = (body["imageUrl"] ?? body["image_url"])?.toString();
+    if (singleImage != null && singleImage.isNotEmpty && mediaList.isEmpty) {
+      mediaList.add(singleImage);
+    }
+
+    final caption = (body["caption"] ?? body["content"] ?? "").toString();
+    if (caption.trim().isEmpty && mediaList.isEmpty) {
+      return badRequest("Caption atau media wajib diisi");
+    }
+
     final db = await getDb();
     final id = _uuid.v4();
     await db.execute(
       Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
                    VALUES (@id, @u, @c, @m::jsonb, @t)"""),
       parameters: {
-        "id": id, "u": me, "c": body["caption"],
-        "m": jsonEncode(body["mediaUrls"] ?? []), "t": body["type"] ?? "post",
+        "id": id,
+        "u": me,
+        "c": caption.isEmpty ? null : caption,
+        "m": jsonEncode(mediaList),
+        "t": (body["type"] ?? "post").toString(),
       },
     );
-    return created({"id": id});
-  } catch (e) {
+    return created({"id": id, "mediaUrls": mediaList});
+  } catch (e, st) {
+    print("Create post error: $e\n$st");
     return serverError("Create post error: $e");
   }
 }
@@ -1175,90 +1197,79 @@ Future<Response> _aiChat(Request r) async {
         parameters: {"id": _uuid.v4(), "u": me, "c": userMsg},
       );
 
-      String reply;
-      final apiKey = Platform.environment["GOOGLE_API_KEY"] ??
+      // Build a tidy chat history (keeps roles alternating, drops our own
+      // error placeholders so they do not poison future turns).
+      const errorMarkers = [
+        "Maaf, tidak ada respons dari AI",
+        "Maaf, AI sedang tidak tersedia",
+        "Maaf, AI sedang sibuk",
+        "Halo! Saya Mylo AI. (Setel",
+      ];
+      final history = await db.execute(
+        Sql.named(
+            "SELECT role, content FROM ai_messages WHERE user_id=@u ORDER BY created_at DESC LIMIT 20"),
+        parameters: {"u": me},
+      );
+      final rawHistory = history.map((row) {
+        final m = row.toColumnMap();
+        return {
+          "role": (m["role"] == "assistant") ? "assistant" : "user",
+          "text": (m["content"] ?? "").toString(),
+        };
+      }).toList().reversed.toList()
+        ..removeWhere((m) =>
+            m["role"] == "assistant" &&
+            errorMarkers
+                .any((mark) => (m["text"] as String).startsWith(mark)));
+
+      const sysPrompt =
+          "Kamu adalah Mylo AI, asisten super app Mylo berbahasa Indonesia. "
+          "Jawab dengan ramah, singkat, dan membantu.";
+
+      final openRouterKey = Platform.environment["OPENROUTER_API_KEY"] ?? "";
+      final geminiKey = Platform.environment["GOOGLE_API_KEY"] ??
           Platform.environment["GEMINI_API_KEY"] ?? "";
-      final model = Platform.environment["GEMINI_MODEL"] ?? "gemini-2.0-flash";
-      if (apiKey.isNotEmpty) {
+
+      String? reply;
+      String? lastError;
+
+      // Provider 1: OpenRouter (preferred when configured — free models have
+      // generous limits, so it sidesteps Gemini's free-tier 429s).
+      if (reply == null && openRouterKey.isNotEmpty) {
         try {
-          final history = await db.execute(
-            Sql.named("SELECT role, content FROM ai_messages WHERE user_id=@u ORDER BY created_at DESC LIMIT 20"),
-            parameters: {"u": me},
+          reply = await _callOpenRouter(
+            apiKey: openRouterKey,
+            model: Platform.environment["OPENROUTER_MODEL"] ??
+                "meta-llama/llama-3.1-8b-instruct:free",
+            system: sysPrompt,
+            history: rawHistory,
           );
-          // Build Gemini contents: convert "assistant" -> "model", skip
-          // consecutive same roles, and skip our own error placeholders so
-          // they do not poison future conversations.
-          const errorMarkers = [
-            "Maaf, tidak ada respons dari AI",
-            "Maaf, AI sedang tidak tersedia",
-            "Halo! Saya Mylo AI. (Setel",
-          ];
-          final rawHistory = history.map((row) {
-            final m = row.toColumnMap();
-            return {
-              "role": m["role"] == "assistant" ? "model" : "user",
-              "text": (m["content"] ?? "").toString(),
-            };
-          }).toList().reversed.toList()
-            ..removeWhere((m) =>
-                m["role"] == "model" &&
-                errorMarkers.any((mark) => (m["text"] as String).startsWith(mark)));
-
-          // Ensure alternating roles (Gemini requirement), deduplicate if needed
-          final contents = <Map<String, dynamic>>[];
-          for (final msg in rawHistory) {
-            if (contents.isEmpty || contents.last["role"] != msg["role"]) {
-              contents.add({
-                "role": msg["role"],
-                "parts": [{"text": msg["text"]}],
-              });
-            }
-          }
-          // Last message must be from user
-          if (contents.isEmpty || contents.last["role"] != "user") {
-            contents.add({"role": "user", "parts": [{"text": userMsg}]});
-          }
-
-          final resp = await http.post(
-            Uri.parse(
-              "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey",
-            ),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "systemInstruction": {
-                "parts": [{"text": "Kamu adalah Mylo AI, asisten super app Mylo berbahasa Indonesia. Jawab dengan ramah, singkat, dan membantu."}],
-              },
-              "contents": contents,
-            }),
-          ).timeout(const Duration(seconds: 30));
-          if (resp.statusCode >= 400) {
-            print("Gemini error ${resp.statusCode}: ${resp.body}");
-            reply = "Maaf, AI sedang sibuk (HTTP ${resp.statusCode}). Coba lagi sebentar.";
-          } else {
-            final data = jsonDecode(resp.body) as Map<String, dynamic>;
-            final candidates = data["candidates"] as List?;
-            if (candidates == null || candidates.isEmpty) {
-              final reason = data["promptFeedback"]?["blockReason"];
-              reply = reason != null
-                  ? "Maaf, pertanyaan diblokir oleh filter keamanan ($reason)."
-                  : "Maaf, AI tidak menghasilkan jawaban. Coba ubah pertanyaan.";
-            } else {
-              final parts = candidates.first["content"]?["parts"] as List?;
-              final text = parts != null && parts.isNotEmpty
-                  ? (parts.first["text"] ?? "").toString().trim()
-                  : "";
-              reply = text.isNotEmpty
-                  ? text
-                  : "Maaf, AI tidak menghasilkan jawaban. Coba ubah pertanyaan.";
-            }
-          }
         } catch (e) {
-          print("Gemini call failed: $e");
-          reply = "Maaf, AI sedang tidak tersedia. Coba lagi nanti.";
+          lastError = "OpenRouter: $e";
+          print("OpenRouter call failed: $e");
         }
-      } else {
-        reply = "Halo! Saya Mylo AI. (Setel GOOGLE_API_KEY di Railway agar saya bisa menjawab cerdas.)";
       }
+
+      // Provider 2: Gemini (fallback or primary if no OpenRouter key).
+      if (reply == null && geminiKey.isNotEmpty) {
+        try {
+          reply = await _callGemini(
+            apiKey: geminiKey,
+            model: Platform.environment["GEMINI_MODEL"] ??
+                "gemini-1.5-flash-latest",
+            system: sysPrompt,
+            history: rawHistory,
+            currentUserMsg: userMsg,
+          );
+        } catch (e) {
+          lastError = "Gemini: $e";
+          print("Gemini call failed: $e");
+        }
+      }
+
+      reply ??= openRouterKey.isEmpty && geminiKey.isEmpty
+          ? "Halo! Saya Mylo AI. (Setel GOOGLE_API_KEY atau OPENROUTER_API_KEY di Railway agar saya bisa menjawab cerdas.)"
+          : "Maaf, AI sedang tidak tersedia. ${lastError ?? "Coba lagi sebentar."}";
 
       await db.execute(
         Sql.named("INSERT INTO ai_messages (id, user_id, role, content) VALUES (@id, @u, 'assistant', @c)"),
@@ -1271,6 +1282,98 @@ Future<Response> _aiChat(Request r) async {
   }
 
   
+Future<String> _callOpenRouter({
+  required String apiKey,
+  required String model,
+  required String system,
+  required List<Map<String, dynamic>> history,
+}) async {
+  final messages = <Map<String, dynamic>>[
+    {"role": "system", "content": system},
+    ...history.map((m) => {
+          "role": m["role"] == "assistant" ? "assistant" : "user",
+          "content": m["text"],
+        }),
+  ];
+  final resp = await http
+      .post(
+        Uri.parse("https://openrouter.ai/api/v1/chat/completions"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $apiKey",
+          "HTTP-Referer": "https://mylo.app",
+          "X-Title": "Mylo",
+        },
+        body: jsonEncode({
+          "model": model,
+          "messages": messages,
+        }),
+      )
+      .timeout(const Duration(seconds: 30));
+  if (resp.statusCode >= 400) {
+    throw "HTTP ${resp.statusCode} ${resp.body}";
+  }
+  final data = jsonDecode(resp.body) as Map<String, dynamic>;
+  final choices = data["choices"] as List?;
+  if (choices == null || choices.isEmpty) throw "Empty response";
+  final content =
+      (choices.first["message"]?["content"] ?? "").toString().trim();
+  if (content.isEmpty) throw "Empty content";
+  return content;
+}
+
+Future<String> _callGemini({
+  required String apiKey,
+  required String model,
+  required String system,
+  required List<Map<String, dynamic>> history,
+  required String currentUserMsg,
+}) async {
+  // Gemini wants alternating user/model with the last turn = user.
+  final contents = <Map<String, dynamic>>[];
+  for (final msg in history) {
+    final role = msg["role"] == "assistant" ? "model" : "user";
+    if (contents.isEmpty || contents.last["role"] != role) {
+      contents.add({
+        "role": role,
+        "parts": [{"text": msg["text"]}],
+      });
+    }
+  }
+  if (contents.isEmpty || contents.last["role"] != "user") {
+    contents.add({"role": "user", "parts": [{"text": currentUserMsg}]});
+  }
+
+  final resp = await http
+      .post(
+        Uri.parse(
+            "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "systemInstruction": {
+            "parts": [{"text": system}],
+          },
+          "contents": contents,
+        }),
+      )
+      .timeout(const Duration(seconds: 30));
+  if (resp.statusCode >= 400) {
+    throw "HTTP ${resp.statusCode} ${resp.body}";
+  }
+  final data = jsonDecode(resp.body) as Map<String, dynamic>;
+  final candidates = data["candidates"] as List?;
+  if (candidates == null || candidates.isEmpty) {
+    final reason = data["promptFeedback"]?["blockReason"];
+    throw reason != null ? "blocked: $reason" : "no candidates";
+  }
+  final parts = candidates.first["content"]?["parts"] as List?;
+  final text = parts != null && parts.isNotEmpty
+      ? (parts.first["text"] ?? "").toString().trim()
+      : "";
+  if (text.isEmpty) throw "empty text";
+  return text;
+}
+
 Future<Response> _clearAiMessages(Request r) async {
   final me = r.context["userId"] as String;
   final db = await getDb();

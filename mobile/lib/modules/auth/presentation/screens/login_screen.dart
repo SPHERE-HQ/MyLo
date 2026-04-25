@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/auth/auth_provider.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/widgets/m_button.dart';
-import '../../../../shared/widgets/google_sign_in_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -75,8 +74,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 MButton(label: 'Masuk', onPressed: _login, isLoading: auth.isLoading, size: MButtonSize.large),
-                const OrDivider(),
-                const GoogleSignInButton(),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

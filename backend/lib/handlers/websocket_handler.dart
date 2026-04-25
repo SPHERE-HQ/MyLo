@@ -46,32 +46,46 @@ Handler createWsHandler() {
             final content = data["content"] as String?;
             final msgType = data["msgType"] as String? ?? "text";
             final mediaUrl = data["mediaUrl"] as String?;
-            if (content == null && mediaUrl == null) { ws.sink.add(_err("Content kosong")); return; }
+            if ((content == null || content.trim().isEmpty) && (mediaUrl == null || mediaUrl.isEmpty)) {
+              ws.sink.add(_err("Content kosong")); return;
+            }
 
-            final db = await getDb();
-            final id = const Uuid().v4();
-            await db.execute(
-              Sql.named("INSERT INTO messages (id, conversation_id, sender_id, type, content, media_url, read_by) VALUES (@id, @conv, @sender, @type, @content, @media, @readBy::jsonb)"),
-              parameters: {"id": id, "conv": convId, "sender": userId, "type": msgType, "content": content, "media": mediaUrl, "readBy": jsonEncode([userId])},
-            );
+            try {
+              final db = await getDb();
+              // Confirm membership first so a non-member doesn't insert silently.
+              final isMember = await db.execute(
+                Sql.named("SELECT 1 FROM chat_members WHERE conversation_id=@c AND user_id=@u"),
+                parameters: {"c": convId, "u": userId},
+              );
+              if (isMember.isEmpty) { ws.sink.add(_err("Bukan anggota percakapan")); return; }
 
-            final senderRows = await db.execute(
-              Sql.named("SELECT username, display_name, avatar_url FROM users WHERE id = @id"),
-              parameters: {"id": userId},
-            );
-            final sender = senderRows.isEmpty ? <String, dynamic>{} : senderRows.first.toColumnMap();
+              final id = const Uuid().v4();
+              await db.execute(
+                Sql.named("INSERT INTO chat_messages (id, conversation_id, sender_id, type, content, media_url, read_by) VALUES (@id, @conv, @sender, @type, @content, @media, @readBy::jsonb)"),
+                parameters: {"id": id, "conv": convId, "sender": userId, "type": msgType, "content": content, "media": mediaUrl, "readBy": jsonEncode([userId])},
+              );
 
-            final msg = jsonEncode({
-              "type": "message", "id": id, "conversationId": convId,
-              "senderId": userId, "senderUsername": sender["username"],
-              "senderAvatar": sender["avatar_url"],
-              "msgType": msgType, "content": content, "mediaUrl": mediaUrl,
-              "createdAt": DateTime.now().toIso8601String(),
-            });
+              final senderRows = await db.execute(
+                Sql.named("SELECT username, display_name, avatar_url FROM users WHERE id = @id"),
+                parameters: {"id": userId},
+              );
+              final sender = senderRows.isEmpty ? <String, dynamic>{} : senderRows.first.toColumnMap();
 
-            final room = _rooms[convId] ?? {};
-            for (final client in room.toList()) {
-              try { client.sink.add(msg); } catch (_) { room.remove(client); }
+              final msg = jsonEncode({
+                "type": "message", "id": id, "conversationId": convId,
+                "senderId": userId, "senderUsername": sender["username"],
+                "senderName": sender["display_name"],
+                "senderAvatar": sender["avatar_url"],
+                "msgType": msgType, "content": content, "mediaUrl": mediaUrl,
+                "createdAt": DateTime.now().toUtc().toIso8601String(),
+              });
+
+              final room = _rooms[convId] ?? {};
+              for (final client in room.toList()) {
+                try { client.sink.add(msg); } catch (_) { room.remove(client); }
+              }
+            } catch (e) {
+              ws.sink.add(_err("Gagal kirim pesan: $e"));
             }
           }
 
