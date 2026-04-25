@@ -104,7 +104,13 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                         style: TextStyle(color: MyloColors.textSecondary)),
                   ]),
                 )
-              : _buildConversationList(convs),
+              : Column(
+                  children: [
+                    _MyloAITile(onTap: () => context.push('/home/ai')),
+                    const Divider(height: 1),
+                    Expanded(child: _buildConversationList(convs)),
+                  ],
+                ),
       floatingActionButton: _showSearch
           ? FloatingActionButton.extended(
               backgroundColor: MyloColors.primary,
@@ -249,6 +255,48 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   );
                 },
               ),
+      ),
+    );
+  }
+}
+
+class _MyloAITile extends StatelessWidget {
+  final VoidCallback onTap;
+  const _MyloAITile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [MyloColors.primary, MyloColors.secondary],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
+      ),
+      title: const Text('Mylo AI',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+      subtitle: const Text('Asisten pintar — tanya apa saja',
+          style: TextStyle(
+              color: MyloColors.textSecondary, fontSize: 12)),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: MyloColors.primary.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Text('AI',
+            style: TextStyle(
+                color: MyloColors.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.w700)),
       ),
     );
   }
