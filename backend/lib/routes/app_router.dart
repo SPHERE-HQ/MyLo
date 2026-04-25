@@ -304,8 +304,13 @@ Future<Response> _me(Request r) async {
   final userId = r.context["userId"] as String;
   final db = await getDb();
   final result = await db.execute(
-    Sql.named("""SELECT id, username, email, display_name, avatar_url, bio, phone, is_verified
-                 FROM users WHERE id=@id"""),
+    Sql.named("""
+      SELECT u.id, u.username, u.email, u.display_name, u.avatar_url, u.bio, u.phone, u.is_verified,
+        (SELECT COUNT(*) FROM feed_posts WHERE user_id = u.id AND is_archived = FALSE) AS posts_count,
+        (SELECT COUNT(*) FROM follows WHERE following_id = u.id) AS followers_count,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) AS following_count
+      FROM users u WHERE u.id=@id
+    """),
     parameters: {"id": userId},
   );
   if (result.isEmpty) return notFound("User tidak ditemukan");
@@ -314,6 +319,9 @@ Future<Response> _me(Request r) async {
     "id": row["id"], "username": row["username"], "email": row["email"],
     "displayName": row["display_name"], "avatarUrl": row["avatar_url"],
     "bio": row["bio"], "phone": row["phone"], "isVerified": row["is_verified"],
+    "postsCount": (row["posts_count"] as num?)?.toInt() ?? 0,
+    "followersCount": (row["followers_count"] as num?)?.toInt() ?? 0,
+    "followingCount": (row["following_count"] as num?)?.toInt() ?? 0,
   });
 }
 
@@ -680,7 +688,7 @@ Future<Response> _listFeed(Request r) async {
               SELECT p.id, p.user_id, u.username, u.display_name, u.avatar_url,
                      p.caption, p.media_urls, p.type, p.likes_count, p.comments_count, p.created_at,
                      EXISTS(SELECT 1 FROM post_likes WHERE post_id=p.id AND user_id=@me) AS liked
-              FROM posts p JOIN users u ON u.id=p.user_id
+              FROM feed_posts p JOIN users u ON u.id=p.user_id
               WHERE p.is_archived=FALSE
               ORDER BY p.created_at DESC LIMIT 50
             """),
@@ -691,7 +699,7 @@ Future<Response> _listFeed(Request r) async {
               SELECT p.id, p.user_id, u.username, u.display_name, u.avatar_url,
                      p.caption, p.media_urls, p.type, p.likes_count, p.comments_count, p.created_at,
                      EXISTS(SELECT 1 FROM post_likes WHERE post_id=p.id AND user_id=@me) AS liked
-              FROM posts p JOIN users u ON u.id=p.user_id
+              FROM feed_posts p JOIN users u ON u.id=p.user_id
               WHERE p.is_archived=FALSE
                 AND (p.caption ILIKE @q OR u.username ILIKE @q OR u.display_name ILIKE @q)
               ORDER BY p.created_at DESC LIMIT 50
@@ -717,7 +725,7 @@ Future<Response> _createPost(Request r) async {
     final db = await getDb();
     final id = _uuid.v4();
     await db.execute(
-      Sql.named("""INSERT INTO posts (id, user_id, caption, media_urls, type)
+      Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
                    VALUES (@id, @u, @c, @m::jsonb, @t)"""),
       parameters: {
         "id": id, "u": me, "c": body["caption"],
@@ -733,7 +741,7 @@ Future<Response> _createPost(Request r) async {
 Future<Response> _deletePost(Request r, String id) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
-  await db.execute(Sql.named("DELETE FROM posts WHERE id=@id AND user_id=@me"),
+  await db.execute(Sql.named("DELETE FROM feed_posts WHERE id=@id AND user_id=@me"),
       parameters: {"id": id, "me": me});
   return ok({"deleted": true});
 }
@@ -747,7 +755,7 @@ Future<Response> _likePost(Request r, String id) async {
     parameters: {"id": _uuid.v4(), "p": id, "u": me},
   );
   if (inserted.isNotEmpty) {
-    await db.execute(Sql.named("UPDATE posts SET likes_count = likes_count + 1 WHERE id=@id"),
+    await db.execute(Sql.named("UPDATE feed_posts SET likes_count = likes_count + 1 WHERE id=@id"),
         parameters: {"id": id});
   }
   return ok({"liked": true});
@@ -761,7 +769,7 @@ Future<Response> _unlikePost(Request r, String id) async {
     parameters: {"p": id, "u": me},
   );
   if (deleted.isNotEmpty) {
-    await db.execute(Sql.named("UPDATE posts SET likes_count = GREATEST(0, likes_count - 1) WHERE id=@id"),
+    await db.execute(Sql.named("UPDATE feed_posts SET likes_count = GREATEST(0, likes_count - 1) WHERE id=@id"),
         parameters: {"id": id});
   }
   return ok({"unliked": true});
@@ -798,7 +806,7 @@ Future<Response> _addComment(Request r, String id) async {
       Sql.named("INSERT INTO post_comments (id, post_id, user_id, content) VALUES (@id, @p, @u, @c)"),
       parameters: {"id": cid, "p": id, "u": me, "c": content},
     );
-    await db.execute(Sql.named("UPDATE posts SET comments_count = comments_count + 1 WHERE id=@id"),
+    await db.execute(Sql.named("UPDATE feed_posts SET comments_count = comments_count + 1 WHERE id=@id"),
         parameters: {"id": id});
     return created({"id": cid});
   } catch (e) {
