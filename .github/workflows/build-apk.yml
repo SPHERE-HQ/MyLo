@@ -33,7 +33,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'
+          flutter-version: '3.29.3'
           channel: 'stable'
           cache: true
 
@@ -58,7 +58,7 @@ jobs:
           ls -la android/
           ls -la android/app/
 
-          # === Detect file types (Flutter 3.27 may use .gradle or .kts) ===
+          # === Detect file types (Flutter 3.x may use .gradle or .kts) ===
           SETTINGS=""
           [ -f android/settings.gradle.kts ] && SETTINGS="android/settings.gradle.kts"
           [ -z "$SETTINGS" ] && [ -f android/settings.gradle ] && SETTINGS="android/settings.gradle"
@@ -108,6 +108,16 @@ jobs:
             echo "$APP_GRADLE: patched"
             echo "--- $APP_GRADLE now ---"
             cat "$APP_GRADLE"
+          fi
+
+          # === 3) Fix minSdkVersion — beberapa plugin butuh min SDK 21 ===
+          if [ -n "$APP_GRADLE" ]; then
+            if [[ "$APP_GRADLE" == *.kts ]]; then
+              sed -i 's/minSdk = [0-9]*/minSdk = 21/' "$APP_GRADLE" || true
+            else
+              sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' "$APP_GRADLE" || true
+            fi
+            echo "minSdk patched"
           fi
 
       - name: Install dependencies
@@ -205,9 +215,12 @@ jobs:
             | `app-debug.apk` | Testing / Debug |
 
             ### Cara Install
-            1. Download APK sesuai perangkat
-            2. Aktifkan **Instal dari sumber tidak dikenal** di pengaturan HP
-            3. Install APK, selesai!
+            1. Download APK sesuai perangkat kamu:
+               - HP modern (2019 ke atas): `app-arm64-v8a-release.apk`
+               - HP lama: `app-armeabi-v7a-release.apk`
+            2. Aktifkan **Instal dari sumber tidak dikenal** di Pengaturan HP
+            3. Buka file APK yang sudah didownload dan install
+            4. Selesai!
           files: |
             apks/mylo-debug-apk/app-debug.apk
             apks/mylo-arm64-release/app-arm64-v8a-release.apk
