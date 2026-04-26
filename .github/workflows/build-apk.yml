@@ -107,27 +107,40 @@ jobs:
             fi
           fi
 
-          # Fix minSdkVersion ke 21 + tambah ndkVersion yang dibutuhkan plugin
-          # Pakai .* agar mengganti seluruh value (termasuk flutter.minSdkVersion)
+          # Fix minSdkVersion ke 21
           if [ -n "$APP_GRADLE" ]; then
             if [[ "$APP_GRADLE" == *.kts ]]; then
               sed -i 's/minSdk\s*=\s*.*/minSdk = 21/' "$APP_GRADLE" || true
-              # Tambah ndkVersion jika belum ada
-              if ! grep -q "ndkVersion" "$APP_GRADLE"; then
-                sed -i '/minSdk\s*=/a\        ndkVersion = "27.0.12077973"' "$APP_GRADLE" || true
-              fi
             else
               sed -i 's/minSdkVersion\s.*/minSdkVersion 21/' "$APP_GRADLE" || true
-              if ! grep -q "ndkVersion" "$APP_GRADLE"; then
-                sed -i '/minSdkVersion/a\        ndkVersion "27.0.12077973"' "$APP_GRADLE" || true
+            fi
+          fi
+
+          # Pasang ndkVersion di android {} block (BUKAN di defaultConfig).
+          # Ganti baris `ndkVersion = flutter.ndkVersion` jika sudah ada;
+          # jika belum, sisipkan setelah baris `compileSdk = ...`.
+          if [ -n "$APP_GRADLE" ]; then
+            if [[ "$APP_GRADLE" == *.kts ]]; then
+              if grep -q 'ndkVersion[[:space:]]*=' "$APP_GRADLE"; then
+                sed -i 's|ndkVersion[[:space:]]*=.*|ndkVersion = "27.0.12077973"|' "$APP_GRADLE"
+              else
+                sed -i '/compileSdk[[:space:]]*=/a\    ndkVersion = "27.0.12077973"' "$APP_GRADLE"
+              fi
+            else
+              if grep -q 'ndkVersion' "$APP_GRADLE"; then
+                sed -i 's|ndkVersion.*|ndkVersion "27.0.12077973"|' "$APP_GRADLE"
+              else
+                sed -i '/compileSdkVersion/a\    ndkVersion "27.0.12077973"' "$APP_GRADLE"
               fi
             fi
             echo "=== Gradle setelah patch ==="
-            grep -n "minSdk\|ndkVersion" "$APP_GRADLE" || true
+            grep -n "minSdk\|ndkVersion\|compileSdk" "$APP_GRADLE" || true
           fi
 
       # ─────────────────────────────────────────────────────────
-      # SIGNING CONFIG — decode keystore dari secrets
+      # SIGNING CONFIG — decode keystore dari secrets dan paksa
+      # SEMUA build type (debug + release) pakai signing yang sama
+      # supaya tidak ada signature mismatch antar build / antar APK.
       # ─────────────────────────────────────────────────────────
       - name: Setup release signing
         working-directory: mobile
@@ -164,8 +177,11 @@ jobs:
               # Patch Kotlin DSL
               python3 - "$APP_GRADLE" << 'PYEOF'
           import sys, re
-          f = open(sys.argv[1]); content = f.read(); f.close()
-          signing_block = """
+          path = sys.argv[1]
+          with open(path) as f:
+              content = f.read()
+
+          signing_block = '''
               val keyProps = java.util.Properties()
               val keyFile = rootProject.file("../key.properties")
               if (keyFile.exists()) {
@@ -180,22 +196,41 @@ jobs:
                       storeType = "PKCS12"
                   }
               }
-          """
-          release_patch = '            signingConfig = signingConfigs.getByName("release")'
-          if "signingConfigs" not in content:
+          '''
+
+          # 1. Sisipkan signingConfigs block di awal android { } kalau belum ada
+          if 'signingConfigs {' not in content and 'signingConfigs{' not in content:
               content = re.sub(r'(android\s*\{)', r'\1' + signing_block, content, count=1)
-          if "signingConfig" not in content:
-              content = content.replace('buildTypes {\n        release {',
-                  'buildTypes {\n        release {\n' + release_patch)
-          open(sys.argv[1], 'w').write(content)
+
+          # 2. Paksa SEMUA referensi signingConfig (debug & release) ke release keystore
+          #    Flutter create defaultnya: signingConfig = signingConfigs.getByName("debug")
+          content = re.sub(
+              r'signingConfig\s*=\s*signingConfigs\.getByName\([^)]*\)',
+              'signingConfig = signingConfigs.getByName("release")',
+              content
+          )
+
+          # 3. Kalau release { } block tidak punya signingConfig sama sekali, tambahkan
+          if not re.search(r'release\s*\{[^}]*signingConfig', content, re.DOTALL):
+              content = re.sub(
+                  r'(release\s*\{)',
+                  r'\1\n            signingConfig = signingConfigs.getByName("release")',
+                  content
+              )
+
+          with open(path, 'w') as f:
+              f.write(content)
           print("build.gradle.kts patched")
           PYEOF
             else
               # Patch Groovy DSL
               python3 - "$APP_GRADLE" << 'PYEOF'
           import sys, re
-          f = open(sys.argv[1]); content = f.read(); f.close()
-          signing_block = """
+          path = sys.argv[1]
+          with open(path) as f:
+              content = f.read()
+
+          signing_block = '''
               def keyProps = new java.util.Properties()
               def keyFile = rootProject.file('../key.properties')
               if (keyFile.exists()) {
@@ -210,21 +245,40 @@ jobs:
                       storeType     'PKCS12'
                   }
               }
-          """
-          release_patch = "            signingConfig signingConfigs.release"
-          if "signingConfigs" not in content:
+          '''
+
+          if 'signingConfigs {' not in content and 'signingConfigs{' not in content:
               content = re.sub(r'(android\s*\{)', r'\1' + signing_block, content, count=1)
-          if "signingConfig" not in content:
-              content = content.replace('buildTypes {\n        release {',
-                  'buildTypes {\n        release {\n' + release_patch)
-          open(sys.argv[1], 'w').write(content)
+
+          # Paksa semua signingConfig ke release
+          content = re.sub(
+              r'signingConfig\s+signingConfigs\.\w+',
+              'signingConfig signingConfigs.release',
+              content
+          )
+
+          if not re.search(r'release\s*\{[^}]*signingConfig', content, re.DOTALL):
+              content = re.sub(
+                  r'(release\s*\{)',
+                  r'\1\n            signingConfig signingConfigs.release',
+                  content
+              )
+
+          with open(path, 'w') as f:
+              f.write(content)
           print("build.gradle patched")
           PYEOF
             fi
+
+            echo "=== signingConfig setelah patch ==="
+            grep -n "signingConfig" "$APP_GRADLE" || true
           fi
 
       # ─────────────────────────────────────────────────────────
       # BUILD
+      # versionCode dinaikkan otomatis pakai run_number supaya
+      # tiap APK punya versionCode unik (Android wajib begini
+      # untuk update). build-name tetap dari pubspec.
       # ─────────────────────────────────────────────────────────
       - name: Install dependencies
         working-directory: mobile
@@ -234,26 +288,30 @@ jobs:
         working-directory: mobile
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Build APK debug
-        working-directory: mobile
-        run: |
-          flutter build apk --debug \
-            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
-
       - name: Build APK release (split per ABI + signed)
         working-directory: mobile
         run: |
           flutter build apk --release --split-per-abi \
+            --build-number=${{ github.run_number }} \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
+
+      - name: Build APK release (universal / fat APK)
+        working-directory: mobile
+        run: |
+          flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_URL=https://mylo-production-5516.up.railway.app
 
       # ─────────────────────────────────────────────────────────
-      # UPLOAD ARTIFACTS
+      # UPLOAD ARTIFACTS — hanya APK release (semua signed key sama)
+      # Tidak upload debug APK lagi karena beda signature dengan
+      # release → bikin user gagal install kalau campur.
       # ─────────────────────────────────────────────────────────
-      - name: Upload APK debug
+      - name: Upload APK universal (semua HP — paling aman)
         uses: actions/upload-artifact@v4
         with:
-          name: mylo-debug-apk
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          name: mylo-universal-release
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
       - name: Upload APK arm64-v8a (HP modern)
@@ -308,11 +366,11 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Mylo ${{ steps.version.outputs.tag }}"
           body: |
-            ## Mylo App — Build Otomatis ✅
+            ## Mylo App — Build Otomatis
 
             **Branch:** `${{ github.ref_name }}`
             **Commit:** `${{ github.sha }}`
-            **Build:** #${{ github.run_number }}
+            **Build:** #${{ github.run_number }} (versionCode = ${{ github.run_number }})
 
             ---
 
@@ -320,30 +378,31 @@ jobs:
 
             | File | Untuk Perangkat |
             |------|----------------|
-            | `app-arm64-v8a-release.apk` | **HP modern 2019 ke atas** (disarankan) |
+            | `app-release.apk` | **Universal — pasti jalan di HP apa pun** (paling aman, ukuran lebih besar) |
+            | `app-arm64-v8a-release.apk` | HP modern 2019+ (ukuran lebih kecil) |
             | `app-armeabi-v7a-release.apk` | HP lama / 32-bit |
             | `app-x86_64-release.apk` | Emulator / Chromebook |
-            | `app-debug.apk` | Testing / Debug |
 
             ---
 
-            ### Cara Install
+            ### PENTING — Cara Install (baca dulu kalau "Apl tidak terpasang")
 
-            1. Download APK sesuai HP kamu (hampir semua HP modern pakai `arm64-v8a`)
-            2. Buka **Pengaturan → Keamanan → Instal aplikasi tidak dikenal** → aktifkan untuk browser/file manager kamu
-            3. Buka file APK → Install
-            4. Saat install, Android akan menampilkan **daftar izin** yang diminta app:
-               - 📷 Kamera — untuk foto profil & unggah gambar
-               - 🎤 Mikrofon — untuk pesan suara & panggilan
-               - 🖼️ Foto & Media — untuk memilih gambar dari galeri
-               - 🔔 Notifikasi — untuk pesan & update real-time
-               - 🔒 Biometrik — untuk login dengan sidik jari / Face ID
-               - 📍 Lokasi — untuk fitur berbasis lokasi (opsional)
+            1. **Kalau pernah install Mylo build LAMA dari sebelum tanggal rilis ini, UNINSTALL dulu** dari HP Anda. Build lama ditandatangani dengan key yang berbeda, jadi Android akan menolak update.
+            2. Download APK sesuai HP Anda. Kalau ragu, pakai **`app-release.apk`** (universal, pasti jalan).
+            3. Buka **Pengaturan → Keamanan → Instal aplikasi tidak dikenal** → aktifkan untuk browser/file manager Anda.
+            4. Buka file APK → Install.
+            5. Saat install, Android akan menampilkan daftar izin yang diminta app:
+               - Kamera — untuk foto profil & unggah gambar
+               - Mikrofon — untuk pesan suara & panggilan
+               - Foto & Media — untuk memilih gambar dari galeri
+               - Notifikasi — untuk pesan & update real-time
+               - Biometrik — untuk login dengan sidik jari / Face ID
+               - Lokasi — untuk fitur berbasis lokasi (opsional)
 
-            > **APK ini sudah ditandatangani** dengan release keystore resmi Mylo.
-            > Update selanjutnya bisa langsung install tanpa perlu uninstall dulu.
+            > APK ini sudah ditandatangani dengan release keystore resmi Mylo.
+            > Mulai dari build ini ke depan, update bisa langsung install tanpa uninstall — semua build pakai signature & versionCode yang konsisten.
           files: |
-            apks/mylo-debug-apk/app-debug.apk
+            apks/mylo-universal-release/app-release.apk
             apks/mylo-arm64-release/app-arm64-v8a-release.apk
             apks/mylo-armeabi-release/app-armeabi-v7a-release.apk
             apks/mylo-x86_64-release/app-x86_64-release.apk
