@@ -90,7 +90,7 @@ class _ContactProfileScreenState
                         imageUrl: coverUrl,
                         fit: BoxFit.cover)
                     : Container(
-                        color: MyloColors.primary.withOpacity(0.7)),
+                        color: MyloColors.primary.withAlpha(179)),
               ),
             ),
             SliverToBoxAdapter(
