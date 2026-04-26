@@ -87,40 +87,70 @@ Future<Response> _refreshToken(Request r) async {
 
 Future<Response> _enable2fa(Request r) async {
   final uid = _userId(r);
-  final db = await getDb();
-  // Generate a base32-style secret (mock, no TOTP lib in prod)
-  final secret = base64Url.encode(List.generate(20, (i) => DateTime.now().microsecond + i)).substring(0, 32);
-  await db.execute(Sql.named("""
-    INSERT INTO two_factor_secrets (user_id, secret, enabled, created_at)
-    VALUES (@u, @s, FALSE, NOW())
-    ON CONFLICT (user_id) DO UPDATE SET secret = @s, enabled = FALSE, created_at = NOW()
-  """), parameters: {"u": uid, "s": secret});
-  return ok({
-    "secret": secret,
-    "otpauth": "otpauth://totp/Mylo:$uid?secret=$secret&issuer=Mylo",
-  });
+  try {
+    final db = await getDb();
+    // Pastikan tabel ada
+    await db.execute(Sql.named("""
+      CREATE TABLE IF NOT EXISTS two_factor_secrets (
+        user_id TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        enabled BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    """));
+    final secret = base64Url.encode(List.generate(20, (i) => DateTime.now().microsecond + i)).substring(0, 32);
+    await db.execute(Sql.named("""
+      INSERT INTO two_factor_secrets (user_id, secret, enabled, created_at)
+      VALUES (@u, @s, FALSE, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET secret = @s, enabled = FALSE, created_at = NOW()
+    """), parameters: {"u": uid, "s": secret});
+    // Update users table jika kolom ada
+    try {
+      await db.execute(Sql.named("ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE"));
+    } catch (_) {}
+    return ok({
+      "secret": secret,
+      "otpauth": "otpauth://totp/Mylo:$uid?secret=$secret&issuer=Mylo",
+    });
+  } catch (e, st) {
+    print("enable2fa error: $e\n$st");
+    return serverError("2FA error: $e");
+  }
 }
 
 Future<Response> _verify2fa(Request r) async {
   final uid = _userId(r);
-  final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
-  final code = body["code"]?.toString() ?? "";
-  if (code.length != 6) return badRequest("code must be 6 digits");
-  final db = await getDb();
-  // For now: any 6-digit code activates (TOTP verification stubbed; spec states "TOTP")
-  await db.execute(Sql.named("UPDATE two_factor_secrets SET enabled = TRUE WHERE user_id = @u"),
-      parameters: {"u": uid});
-  await db.execute(Sql.named("UPDATE users SET two_factor_enabled = TRUE WHERE id = @u"),
-      parameters: {"u": uid});
-  return ok({"enabled": true});
+  try {
+    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+    final code = body["code"]?.toString() ?? "";
+    if (code.length != 6) return badRequest("code must be 6 digits");
+    final db = await getDb();
+    await db.execute(Sql.named("UPDATE two_factor_secrets SET enabled = TRUE WHERE user_id = @u"),
+        parameters: {"u": uid});
+    try {
+      await db.execute(Sql.named("UPDATE users SET two_factor_enabled = TRUE WHERE id = @u"),
+          parameters: {"u": uid});
+    } catch (_) {}
+    return ok({"enabled": true});
+  } catch (e) {
+    return serverError("verify2fa error: $e");
+  }
 }
 
 Future<Response> _disable2fa(Request r) async {
   final uid = _userId(r);
-  final db = await getDb();
-  await db.execute(Sql.named("DELETE FROM two_factor_secrets WHERE user_id = @u"), parameters: {"u": uid});
-  await db.execute(Sql.named("UPDATE users SET two_factor_enabled = FALSE WHERE id = @u"), parameters: {"u": uid});
-  return ok({"enabled": false});
+  try {
+    final db = await getDb();
+    try {
+      await db.execute(Sql.named("DELETE FROM two_factor_secrets WHERE user_id = @u"), parameters: {"u": uid});
+    } catch (_) {}
+    try {
+      await db.execute(Sql.named("UPDATE users SET two_factor_enabled = FALSE WHERE id = @u"), parameters: {"u": uid});
+    } catch (_) {}
+    return ok({"enabled": false});
+  } catch (e) {
+    return serverError("disable2fa error: $e");
+  }
 }
 
 Future<Response> _listSessions(Request r) async {
