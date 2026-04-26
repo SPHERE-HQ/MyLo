@@ -56,11 +56,12 @@ class MyloTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: MyloColors.primary,
       brightness: Brightness.light,
-      background: MyloColors.background,
       surface: MyloColors.surface,
       primary: MyloColors.primary,
       secondary: MyloColors.secondary,
       error: MyloColors.danger,
+    ).copyWith(
+      surfaceContainerLowest: MyloColors.background,
     ),
     fontFamily: 'Inter',
     scaffoldBackgroundColor: MyloColors.background,
@@ -70,7 +71,7 @@ class MyloTheme {
       elevation: 0,
       surfaceTintColor: Colors.transparent,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: MyloColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -94,11 +95,12 @@ class MyloTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: MyloColors.primary,
       brightness: Brightness.dark,
-      background: MyloColors.backgroundDark,
       surface: MyloColors.surfaceDark,
       primary: MyloColors.primary,
       secondary: MyloColors.secondary,
       error: MyloColors.danger,
+    ).copyWith(
+      surfaceContainerLowest: MyloColors.backgroundDark,
     ),
     fontFamily: 'Inter',
     scaffoldBackgroundColor: MyloColors.backgroundDark,
