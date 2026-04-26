@@ -1265,8 +1265,8 @@ Future<Response> _aiChat(Request r) async {
             history: rawHistory,
           );
         } catch (e) {
-          lastError = "Groq: " + e.toString();
-          print("Groq call failed: " + e.toString());
+          lastError = "Groq: $e";
+          print("Groq call failed: $e");
         }
       }
 
