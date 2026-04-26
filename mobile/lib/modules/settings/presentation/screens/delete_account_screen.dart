@@ -51,9 +51,9 @@ class _S extends ConsumerState<DeleteAccountScreen> {
           Container(
             padding: const EdgeInsets.all(MyloSpacing.lg),
             decoration: BoxDecoration(
-              color: MyloColors.danger.withOpacity(.08),
+              color: MyloColors.danger.withAlpha(20),
               borderRadius: BorderRadius.circular(MyloRadius.md),
-              border: Border.all(color: MyloColors.danger.withOpacity(.3)),
+              border: Border.all(color: MyloColors.danger.withAlpha(77)),
             ),
             child: const Text(
               'PERHATIAN: Setelah dihapus, akun & semua data tidak bisa dipulihkan. '
