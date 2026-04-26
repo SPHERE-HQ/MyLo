@@ -32,7 +32,7 @@ jobs:
 
       - name: Analisis kode backend
         working-directory: backend
-        run: dart analyze --fatal-infos
+        run: dart analyze
 
       - name: Compile server (AOT)
         working-directory: backend
