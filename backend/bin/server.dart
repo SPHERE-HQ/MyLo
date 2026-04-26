@@ -9,7 +9,13 @@ import "../lib/middleware/rate_limit_middleware.dart";
 import "../lib/routes/app_router.dart";
 
 void main() async {
-  await initDb();
+  // Init DB — tidak fatal jika DATABASE_URL belum di-set
+  try {
+    await initDb();
+  } catch (e) {
+    print("WARNING: initDb() error: $e — server tetap jalan tanpa DB");
+  }
+
   final port = int.parse(Platform.environment["PORT"] ?? "8080");
 
   final router = Router();
