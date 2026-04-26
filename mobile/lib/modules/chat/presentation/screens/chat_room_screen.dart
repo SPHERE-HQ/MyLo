@@ -193,7 +193,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   Widget _inputBar() => Container(
     padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 12),
     decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor,
-      border: Border(top: BorderSide(color: MyloColors.border.withOpacity(0.5)))),
+      border: Border(top: BorderSide(color: MyloColors.border.withAlpha(128)))),
     child: Row(children: [
       Expanded(child: TextField(
         controller: _ctrl, onChanged: (_) => _sendTyping(),
