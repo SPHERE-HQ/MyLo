@@ -1246,6 +1246,7 @@ Future<Response> _aiChat(Request r) async {
           "Kamu adalah Mylo AI, asisten super app Mylo berbahasa Indonesia. "
           "Jawab dengan ramah, singkat, dan membantu.";
 
+      final groqKey = Platform.environment["GROQ_API_KEY"] ?? "";
       final openAiKey = Platform.environment["OPENAI_API_KEY"] ?? "";
       final openRouterKey = Platform.environment["OPENROUTER_API_KEY"] ?? "";
       final geminiKey = Platform.environment["GOOGLE_API_KEY"] ??
@@ -1254,7 +1255,22 @@ Future<Response> _aiChat(Request r) async {
       String? reply;
       String? lastError;
 
-      // Provider 1: OpenAI (prioritas utama)
+      // Provider 1: Groq (prioritas utama - gratis, sangat cepat)
+      if (reply == null && groqKey.isNotEmpty) {
+        try {
+          reply = await _callGroq(
+            apiKey: groqKey,
+            model: Platform.environment["GROQ_MODEL"] ?? "llama-3.1-8b-instant",
+            system: sysPrompt,
+            history: rawHistory,
+          );
+        } catch (e) {
+          lastError = "Groq: " + e.toString();
+          print("Groq call failed: " + e.toString());
+        }
+      }
+
+      // Provider 2: OpenAI (fallback)
       if (reply == null && openAiKey.isNotEmpty) {
         try {
           reply = await _callOpenAI(
@@ -1269,7 +1285,7 @@ Future<Response> _aiChat(Request r) async {
         }
       }
 
-      // Provider 2: OpenRouter (fallback)
+      // Provider 3: OpenRouter (fallback)
       if (reply == null && openRouterKey.isNotEmpty) {
         try {
           reply = await _callOpenRouter(
@@ -1285,7 +1301,7 @@ Future<Response> _aiChat(Request r) async {
         }
       }
 
-      // Provider 3: Gemini (last resort)
+      // Provider 4: Gemini (last resort)
       if (reply == null && geminiKey.isNotEmpty) {
         try {
           reply = await _callGemini(
@@ -1301,8 +1317,8 @@ Future<Response> _aiChat(Request r) async {
         }
       }
 
-      reply ??= (openAiKey.isEmpty && openRouterKey.isEmpty && geminiKey.isEmpty)
-          ? "Halo! Saya Mylo AI. (Setel OPENAI_API_KEY di Railway agar saya bisa menjawab cerdas.)"
+      reply ??= (groqKey.isEmpty && openAiKey.isEmpty && openRouterKey.isEmpty && geminiKey.isEmpty)
+          ? "Halo! Saya Mylo AI. (Setel GROQ_API_KEY di Railway agar saya bisa menjawab cerdas.)"
           : "Maaf, AI sedang tidak tersedia. ${lastError ?? "Coba lagi sebentar."}";
 
       await db.execute(
@@ -1316,6 +1332,40 @@ Future<Response> _aiChat(Request r) async {
   }
 
   
+Future<String> _callGroq({
+  required String apiKey,
+  required String model,
+  required String system,
+  required List<Map<String, dynamic>> history,
+}) async {
+  final messages = <Map<String, dynamic>>[
+    {"role": "system", "content": system},
+    ...history.map((m) => {
+          "role": m["role"] == "assistant" ? "assistant" : "user",
+          "content": m["text"],
+        }),
+  ];
+  final resp = await http
+      .post(
+        Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $apiKey",
+        },
+        body: jsonEncode({"model": model, "messages": messages}),
+      )
+      .timeout(const Duration(seconds: 30));
+  if (resp.statusCode >= 400) {
+    throw "HTTP ${resp.statusCode} ${resp.body}";
+  }
+  final data = jsonDecode(resp.body) as Map<String, dynamic>;
+  final choices = data["choices"] as List?;
+  if (choices == null || choices.isEmpty) throw "Empty response";
+  final text = (choices.first["message"]?["content"] ?? "").toString().trim();
+  if (text.isEmpty) throw "Empty content";
+  return text;
+}
+
 Future<String> _callOpenAI({
   required String apiKey,
   required String model,
