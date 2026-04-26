@@ -107,16 +107,23 @@ jobs:
             fi
           fi
 
-          # Fix minSdkVersion ke 21 (wajib untuk local_auth & flutter_secure_storage)
+          # Fix minSdkVersion ke 21 + tambah ndkVersion yang dibutuhkan plugin
           # Pakai .* agar mengganti seluruh value (termasuk flutter.minSdkVersion)
           if [ -n "$APP_GRADLE" ]; then
             if [[ "$APP_GRADLE" == *.kts ]]; then
               sed -i 's/minSdk\s*=\s*.*/minSdk = 21/' "$APP_GRADLE" || true
+              # Tambah ndkVersion jika belum ada
+              if ! grep -q "ndkVersion" "$APP_GRADLE"; then
+                sed -i '/minSdk\s*=/a\        ndkVersion = "27.0.12077973"' "$APP_GRADLE" || true
+              fi
             else
               sed -i 's/minSdkVersion\s.*/minSdkVersion 21/' "$APP_GRADLE" || true
+              if ! grep -q "ndkVersion" "$APP_GRADLE"; then
+                sed -i '/minSdkVersion/a\        ndkVersion "27.0.12077973"' "$APP_GRADLE" || true
+              fi
             fi
-            echo "minSdk setelah patch:"
-            grep -n "minSdk" "$APP_GRADLE" || true
+            echo "=== Gradle setelah patch ==="
+            grep -n "minSdk\|ndkVersion" "$APP_GRADLE" || true
           fi
 
       # ─────────────────────────────────────────────────────────
