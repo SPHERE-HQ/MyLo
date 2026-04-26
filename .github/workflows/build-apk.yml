@@ -303,19 +303,90 @@ jobs:
         working-directory: mobile
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+      # ─────────────────────────────────────────────────────────
+      # FLUTTER TEST — jalankan unit/widget test sebelum build APK.
+      # Kalau test gagal, hasilnya di-upload sebagai artifact (JSON
+      # report + log mentah) supaya gampang lihat akar masalahnya
+      # tanpa scroll log build yang panjang.
+      # ─────────────────────────────────────────────────────────
+      - name: Flutter test (unit + widget)
+        id: flutter_test
+        working-directory: mobile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p test-reports
+          # --machine: hasil JSON yang gampang di-parse
+          # --reporter expanded: log human-readable di stdout
+          # tee: simpan dua-duanya
+          flutter test \
+            --machine \
+            --coverage \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app \
+            > test-reports/test-results.json 2> test-reports/test-stderr.log || TEST_EXIT=$?
+
+          # Re-run dengan reporter expanded supaya log human-readable
+          # juga ada (tanpa --machine). Pakai || true biar tidak gagal
+          # sebelum upload artifact.
+          flutter test \
+            --reporter expanded \
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app \
+            2>&1 | tee test-reports/test-output.log || true
+
+          echo "exit_code=${TEST_EXIT:-0}" >> "$GITHUB_OUTPUT"
+          if [ -n "${TEST_EXIT:-}" ] && [ "${TEST_EXIT}" != "0" ]; then
+            echo "FLUTTER TEST FAILED with exit code ${TEST_EXIT}"
+          else
+            echo "Flutter test passed."
+          fi
+
+      - name: Upload Flutter test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-report-build-${{ github.run_number }}
+          path: |
+            mobile/test-reports/
+            mobile/coverage/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Stop kalau Flutter test gagal
+        if: steps.flutter_test.outputs.exit_code != '0'
+        run: |
+          echo "::error::Flutter test gagal (exit ${{ steps.flutter_test.outputs.exit_code }}). Cek artifact 'flutter-test-report-build-${{ github.run_number }}' untuk detail. Build APK dibatalkan."
+          exit 1
+
       - name: Build APK release (split per ABI + signed)
         working-directory: mobile
         run: |
           flutter build apk --release --split-per-abi \
             --build-number=${{ github.run_number }} \
-            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app 2>&1 | tee build-split-abi.log
 
       - name: Build APK release (universal / fat APK)
         working-directory: mobile
         run: |
           flutter build apk --release \
             --build-number=${{ github.run_number }} \
-            --dart-define=API_URL=https://mylo-production-5516.up.railway.app
+            --dart-define=API_URL=https://mylo-production-5516.up.railway.app 2>&1 | tee build-universal.log
+
+      # ─────────────────────────────────────────────────────────
+      # Upload log build (gagal ATAU sukses) supaya bisa diaudit
+      # ─────────────────────────────────────────────────────────
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: |
+            mobile/build-split-abi.log
+            mobile/build-universal.log
+            mobile/android/app/build.gradle.kts
+            mobile/android/app/build.gradle
+            mobile/android/key.properties
+          retention-days: 14
+          if-no-files-found: warn
 
       # ─────────────────────────────────────────────────────────
       # UPLOAD ARTIFACTS — hanya APK release (semua signed key sama)
