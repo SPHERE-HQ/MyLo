@@ -31,15 +31,11 @@ class ChatListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends ConsumerState<ChatListScreen>
-    with AutomaticKeepAliveClientMixin {
+class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   bool _showSearch = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
   bool _startingChat = false;
-
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void dispose() {
@@ -70,7 +66,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final convAsync = ref.watch(conversationsProvider);
     final meAsync = ref.watch(currentUserProvider);
     final myId = meAsync.valueOrNull?['id']?.toString() ?? '';
