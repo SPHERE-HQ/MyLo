@@ -5,33 +5,49 @@ import "package:postgres/postgres.dart";
 // without needing a direct import on package:postgres.
 export "package:postgres/postgres.dart" show Sql;
 
-late Connection _db;
+Connection? _db;
+bool _dbAvailable = false;
 
-Future<Connection> getDb() async => _db;
+Future<Connection> getDb() async {
+  if (_db == null || !_dbAvailable) {
+    throw StateError("Database tidak tersedia. Pastikan DATABASE_URL di-set.");
+  }
+  return _db!;
+}
 
 Future<void> initDb() async {
   final url = Platform.environment["DATABASE_URL"] ?? "";
-  if (url.isEmpty) { print("WARNING: DATABASE_URL not set"); return; }
-  final uri = Uri.parse(url);
-  final parts = uri.userInfo.split(":");
-  _db = await Connection.open(
-    Endpoint(
-      host: uri.host,
-      port: uri.port == 0 ? 5432 : uri.port,
-      database: uri.pathSegments.first,
-      username: parts[0],
-      password: parts.length > 1 ? parts[1] : "",
-    ),
-    settings: const ConnectionSettings(sslMode: SslMode.require),
-  );
-  print("Database connected");
-  await _runMigrations();
+  if (url.isEmpty) {
+    print("WARNING: DATABASE_URL tidak di-set — server berjalan tanpa database.");
+    _dbAvailable = false;
+    return;
+  }
+  try {
+    final uri = Uri.parse(url);
+    final parts = uri.userInfo.split(":");
+    _db = await Connection.open(
+      Endpoint(
+        host: uri.host,
+        port: uri.port == 0 ? 5432 : uri.port,
+        database: uri.pathSegments.first,
+        username: parts[0],
+        password: parts.length > 1 ? parts[1] : "",
+      ),
+      settings: const ConnectionSettings(sslMode: SslMode.require),
+    );
+    _dbAvailable = true;
+    print("Database connected");
+    await _runMigrations();
+  } catch (e) {
+    print("ERROR: Gagal connect ke database: $e");
+    _dbAvailable = false;
+  }
 }
 
 // Helper: idempotently rename a legacy table to the new name expected by the
 // current code base. Safe to run on every boot.
 Future<void> _renameIfExists(String oldName, String newName) async {
-  await _db.execute("""
+  await _db!.execute("""
     DO \$\$
     BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.tables
@@ -58,30 +74,30 @@ Future<void> _runMigrations() async {
   await _renameIfExists("messages", "chat_messages");
 
   // ─── USERS ───────────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY,
       username VARCHAR(50) UNIQUE NOT NULL,
       email VARCHAR(255) UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
+      password_hash TEXT,
       display_name VARCHAR(100),
       avatar_url TEXT,
       bio TEXT,
       phone VARCHAR(20),
       is_verified BOOLEAN DEFAULT FALSE,
       two_factor_enabled BOOLEAN DEFAULT FALSE,
-      google_sub TEXT UNIQUE,
+      google_sub TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE");
-  await _db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT");
-  await _db.execute("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL");
-  await _db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL");
+  await _db!.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE");
+  await _db!.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT");
+  await _db!.execute("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL");
+  await _db!.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL");
 
   // ─── SESSIONS ────────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS sessions (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -92,7 +108,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── EMAIL VERIFICATIONS ─────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS email_verifications (
       id UUID PRIMARY KEY,
       email VARCHAR(255) NOT NULL,
@@ -104,7 +120,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── FOLLOWS ─────────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS follows (
       id UUID PRIMARY KEY,
       follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -115,7 +131,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── FEED POSTS (renamed from "posts") ───────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS feed_posts (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -131,15 +147,15 @@ Future<void> _runMigrations() async {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS caption TEXT");
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS media_urls JSONB DEFAULT '[]'");
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'post'");
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS likes_count INT DEFAULT 0");
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS comments_count INT DEFAULT 0");
-  await _db.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS caption TEXT");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS media_urls JSONB DEFAULT '[]'");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'post'");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS likes_count INT DEFAULT 0");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS comments_count INT DEFAULT 0");
+  await _db!.execute("ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE");
 
   // ─── POST LIKES ──────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS post_likes (
       id UUID PRIMARY KEY,
       post_id UUID NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
@@ -150,7 +166,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── POST COMMENTS ───────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS post_comments (
       id UUID PRIMARY KEY,
       post_id UUID NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
@@ -162,7 +178,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── STORIES ─────────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS stories (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -176,7 +192,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── CHAT CONVERSATIONS (renamed from "conversations") ───
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS chat_conversations (
       id UUID PRIMARY KEY,
       type VARCHAR(20) DEFAULT 'private',
@@ -186,13 +202,13 @@ Future<void> _runMigrations() async {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'private'");
-  await _db.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS name VARCHAR(100)");
-  await _db.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS avatar_url TEXT");
-  await _db.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL");
+  await _db!.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'private'");
+  await _db!.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS name VARCHAR(100)");
+  await _db!.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS avatar_url TEXT");
+  await _db!.execute("ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL");
 
   // ─── CHAT MEMBERS (renamed from "conversation_members") ──
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS chat_members (
       conversation_id UUID NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -201,10 +217,10 @@ Future<void> _runMigrations() async {
       PRIMARY KEY (conversation_id, user_id)
     )
   """);
-  await _db.execute("ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'member'");
+  await _db!.execute("ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'member'");
 
   // ─── CHAT MESSAGES (renamed from "messages") ─────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS chat_messages (
       id UUID PRIMARY KEY,
       conversation_id UUID NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
@@ -218,21 +234,21 @@ Future<void> _runMigrations() async {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'");
-  await _db.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_url TEXT");
-  await _db.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL");
-  await _db.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE");
-  await _db.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS read_by JSONB DEFAULT '[]'");
+  await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'");
+  await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_url TEXT");
+  await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL");
+  await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE");
+  await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS read_by JSONB DEFAULT '[]'");
 
   // Backwards-compat views: a few legacy queries still reference the old
   // names. Expose them as updatable views over the renamed tables.
-  await _db.execute("CREATE OR REPLACE VIEW posts AS SELECT * FROM feed_posts");
-  await _db.execute("CREATE OR REPLACE VIEW conversations AS SELECT * FROM chat_conversations");
-  await _db.execute("CREATE OR REPLACE VIEW conversation_members AS SELECT * FROM chat_members");
-  await _db.execute("CREATE OR REPLACE VIEW messages AS SELECT * FROM chat_messages");
+  await _db!.execute("CREATE OR REPLACE VIEW posts AS SELECT * FROM feed_posts");
+  await _db!.execute("CREATE OR REPLACE VIEW conversations AS SELECT * FROM chat_conversations");
+  await _db!.execute("CREATE OR REPLACE VIEW conversation_members AS SELECT * FROM chat_members");
+  await _db!.execute("CREATE OR REPLACE VIEW messages AS SELECT * FROM chat_messages");
 
   // ─── WALLETS ─────────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS wallets (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -243,13 +259,13 @@ Future<void> _runMigrations() async {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()");
-  await _db.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'IDR'");
-  await _db.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE");
-  await _db.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS pin_hash TEXT");
+  await _db!.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()");
+  await _db!.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'IDR'");
+  await _db!.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE");
+  await _db!.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS pin_hash TEXT");
 
   // ─── WALLET TRANSACTIONS ─────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS wallet_transactions (
       id UUID PRIMARY KEY,
       wallet_id UUID NOT NULL REFERENCES wallets(user_id) ON DELETE CASCADE,
@@ -266,7 +282,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── NOTIFICATIONS ───────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS notifications (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -278,10 +294,10 @@ Future<void> _runMigrations() async {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   """);
-  await _db.execute("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'");
+  await _db!.execute("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'");
 
   // ─── USER FILES ──────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS user_files (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -295,7 +311,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── COMMUNITY SERVERS ───────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS community_servers (
       id UUID PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
@@ -310,7 +326,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── COMMUNITY CHANNELS ──────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS community_channels (
       id UUID PRIMARY KEY,
       server_id UUID NOT NULL REFERENCES community_servers(id) ON DELETE CASCADE,
@@ -324,7 +340,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── COMMUNITY MESSAGES ──────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS community_messages (
       id UUID PRIMARY KEY,
       channel_id UUID NOT NULL REFERENCES community_channels(id) ON DELETE CASCADE,
@@ -340,7 +356,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── COMMUNITY MEMBERS ───────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS community_members (
       server_id UUID NOT NULL REFERENCES community_servers(id) ON DELETE CASCADE,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -351,7 +367,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── PASSWORD RESETS ─────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS password_resets (
       id UUID PRIMARY KEY,
       email VARCHAR(255) NOT NULL,
@@ -363,7 +379,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── EMAILS (Email Client) ───────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS emails (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -384,7 +400,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── AI MESSAGES ─────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS ai_messages (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -395,7 +411,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── REFRESH TOKENS ──────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS refresh_tokens (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -407,7 +423,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── 2FA SECRETS ─────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS two_factor_secrets (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       secret TEXT NOT NULL,
@@ -417,7 +433,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── DEVICES (FCM tokens) ────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS devices (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -428,7 +444,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── AUDIT LOG ───────────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS audit_log (
       id UUID PRIMARY KEY,
       user_id UUID,
@@ -440,7 +456,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── BROWSER BOOKMARKS ───────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS browser_bookmarks (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -452,7 +468,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── BROWSER HISTORY ─────────────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS browser_history (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -463,7 +479,7 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── NOTIFICATION PREFERENCES ────────────────────────────
-  await _db.execute("""
+  await _db!.execute("""
     CREATE TABLE IF NOT EXISTS notification_prefs (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       prefs JSONB NOT NULL DEFAULT '{}',
@@ -472,26 +488,26 @@ Future<void> _runMigrations() async {
   """);
 
   // ─── SESSIONS extras ─────────────────────────────────────
-  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device TEXT");
-  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip TEXT");
-  await _db.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ DEFAULT NOW()");
+  await _db!.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device TEXT");
+  await _db!.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip TEXT");
+  await _db!.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ DEFAULT NOW()");
 
   // ─── INDEXES ─────────────────────────────────────────────
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_feed_posts_user ON feed_posts(user_id, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_comments_post ON post_comments(post_id, created_at)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id, expires_at)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_comm_messages_channel ON community_messages(channel_id, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_browser_history_user ON browser_history(user_id, visited_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_browser_bookmarks_user ON browser_bookmarks(user_id, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_emails_user_folder ON emails(user_id, folder, created_at DESC)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id)");
-  await _db.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_feed_posts_user ON feed_posts(user_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_comments_post ON post_comments(post_id, created_at)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id, expires_at)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_comm_messages_channel ON community_messages(channel_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_browser_history_user ON browser_history(user_id, visited_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_browser_bookmarks_user ON browser_bookmarks(user_id, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_emails_user_folder ON emails(user_id, folder, created_at DESC)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id)");
+  await _db!.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at DESC)");
 
   print("Migrations complete");
 }
