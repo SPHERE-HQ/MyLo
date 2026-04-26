@@ -19,10 +19,10 @@ void main() async {
   final port = int.parse(Platform.environment["PORT"] ?? "8080");
 
   final router = Router();
+  // WebSocket real-time chat — MUST be registered before catch-all mount
+  router.get("/ws/chat", createWsHandler());
   // HTTP REST API
   router.mount("/", buildRouter().call);
-  // WebSocket real-time chat
-  router.get("/ws/chat", createWsHandler());
 
   final handler = Pipeline()
       .addMiddleware(logRequests())

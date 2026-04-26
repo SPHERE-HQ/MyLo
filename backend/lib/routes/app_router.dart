@@ -461,12 +461,12 @@ Future<Response> _listConversations(Request r) async {
   final res = await db.execute(
     Sql.named("""
       SELECT c.id, c.type, c.name, c.avatar_url, c.created_at,
-        (SELECT content FROM messages WHERE conversation_id=c.id AND is_deleted=FALSE
+        (SELECT content FROM chat_messages WHERE conversation_id=c.id AND is_deleted=FALSE
          ORDER BY created_at DESC LIMIT 1) as last_message,
-        (SELECT created_at FROM messages WHERE conversation_id=c.id
+        (SELECT created_at FROM chat_messages WHERE conversation_id=c.id
          ORDER BY created_at DESC LIMIT 1) as last_at
-      FROM conversations c
-      JOIN conversation_members m ON m.conversation_id=c.id
+      FROM chat_conversations c
+      JOIN chat_members m ON m.conversation_id=c.id
       WHERE m.user_id=@me
       ORDER BY last_at DESC NULLS LAST, c.created_at DESC
     """),
@@ -477,7 +477,7 @@ Future<Response> _listConversations(Request r) async {
     final m = row.toColumnMap();
     final members = await db.execute(
       Sql.named("""SELECT u.id, u.username, u.display_name, u.avatar_url
-                   FROM conversation_members cm JOIN users u ON u.id=cm.user_id
+                   FROM chat_members cm JOIN users u ON u.id=cm.user_id
                    WHERE cm.conversation_id=@cid"""),
       parameters: {"cid": m["id"]},
     );
@@ -508,11 +508,11 @@ Future<Response> _createConversation(Request r) async {
       final ids = memberIds.toList();
       final existing = await db.execute(
         Sql.named("""
-          SELECT c.id FROM conversations c
+          SELECT c.id FROM chat_conversations c
           WHERE c.type='private' AND c.id IN (
-            SELECT conversation_id FROM conversation_members WHERE user_id=@a
+            SELECT conversation_id FROM chat_members WHERE user_id=@a
             INTERSECT
-            SELECT conversation_id FROM conversation_members WHERE user_id=@b
+            SELECT conversation_id FROM chat_members WHERE user_id=@b
           ) LIMIT 1
         """),
         parameters: {"a": ids[0], "b": ids[1]},
@@ -522,12 +522,12 @@ Future<Response> _createConversation(Request r) async {
 
     final id = _uuid.v4();
     await db.execute(
-      Sql.named("INSERT INTO conversations (id, type, name, created_by) VALUES (@id, @t, @n, @me)"),
+      Sql.named("INSERT INTO chat_conversations (id, type, name, created_by) VALUES (@id, @t, @n, @me)"),
       parameters: {"id": id, "t": type, "n": name, "me": me},
     );
     for (final m in memberIds) {
       await db.execute(
-        Sql.named("INSERT INTO conversation_members (conversation_id, user_id, role) VALUES (@c, @u, @r) ON CONFLICT DO NOTHING"),
+        Sql.named("INSERT INTO chat_members (conversation_id, user_id, role) VALUES (@c, @u, @r) ON CONFLICT DO NOTHING"),
         parameters: {"c": id, "u": m, "r": m == me ? "admin" : "member"},
       );
     }
@@ -541,7 +541,7 @@ Future<Response> _listMessages(Request r, String id) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
   final isMember = await db.execute(
-    Sql.named("SELECT 1 FROM conversation_members WHERE conversation_id=@c AND user_id=@u"),
+    Sql.named("SELECT 1 FROM chat_members WHERE conversation_id=@c AND user_id=@u"),
     parameters: {"c": id, "u": me},
   );
   if (isMember.isEmpty) return unauthorized("Bukan anggota");
@@ -549,7 +549,7 @@ Future<Response> _listMessages(Request r, String id) async {
   final res = await db.execute(
     Sql.named("""SELECT m.id, m.sender_id, u.username, u.display_name, u.avatar_url,
                    m.type, m.content, m.media_url, m.reply_to_id, m.is_deleted, m.created_at
-                 FROM messages m JOIN users u ON u.id=m.sender_id
+                 FROM chat_messages m JOIN users u ON u.id=m.sender_id
                  WHERE m.conversation_id=@c ORDER BY m.created_at DESC LIMIT @l"""),
     parameters: {"c": id, "l": limit},
   );
@@ -571,13 +571,13 @@ Future<Response> _sendMessage(Request r, String id) async {
     final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
     final db = await getDb();
     final isMember = await db.execute(
-      Sql.named("SELECT 1 FROM conversation_members WHERE conversation_id=@c AND user_id=@u"),
+      Sql.named("SELECT 1 FROM chat_members WHERE conversation_id=@c AND user_id=@u"),
       parameters: {"c": id, "u": me},
     );
     if (isMember.isEmpty) return unauthorized("Bukan anggota");
     final mid = _uuid.v4();
     await db.execute(
-      Sql.named("""INSERT INTO messages (id, conversation_id, sender_id, type, content, media_url, reply_to_id)
+      Sql.named("""INSERT INTO chat_messages (id, conversation_id, sender_id, type, content, media_url, reply_to_id)
                    VALUES (@id, @c, @s, @t, @co, @m, @r)"""),
       parameters: {
         "id": mid, "c": id, "s": me,
@@ -614,7 +614,7 @@ Future<Response> _deleteMessage(Request r, String id) async {
   final me = r.context["userId"] as String;
   final db = await getDb();
   await db.execute(
-    Sql.named("UPDATE messages SET is_deleted=TRUE, content=NULL WHERE id=@id AND sender_id=@me"),
+    Sql.named("UPDATE chat_messages SET is_deleted=TRUE, content=NULL WHERE id=@id AND sender_id=@me"),
     parameters: {"id": id, "me": me},
   );
   return ok({"deleted": true});
@@ -1256,7 +1256,7 @@ Future<Response> _aiChat(Request r) async {
           reply = await _callGemini(
             apiKey: geminiKey,
             model: Platform.environment["GEMINI_MODEL"] ??
-                "gemini-1.5-flash-latest",
+                "gemini-2.0-flash",
             system: sysPrompt,
             history: rawHistory,
             currentUserMsg: userMsg,

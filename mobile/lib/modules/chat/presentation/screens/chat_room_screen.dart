@@ -29,16 +29,30 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   bool _otherTyping = false;
   bool _isTyping = false;
   Timer? _typingTimer;
+  Timer? _reconnectTimer;
   bool _connected = false;
+  bool _disposed = false;
+  int _reconnectAttempt = 0;
 
   @override
   void initState() { super.initState(); _loadHistory(); _connectWs(); }
 
   @override
   void dispose() {
+    _disposed = true;
     _ctrl.dispose(); _scroll.dispose();
-    _ws?.sink.close(); _typingTimer?.cancel();
+    _ws?.sink.close(); _typingTimer?.cancel(); _reconnectTimer?.cancel();
     super.dispose();
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed) return;
+    _reconnectAttempt = (_reconnectAttempt + 1).clamp(1, 6);
+    final delay = Duration(seconds: 1 << (_reconnectAttempt - 1));
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      if (!_disposed) _connectWs();
+    });
   }
 
   Future<void> _loadHistory() async {
@@ -63,35 +77,44 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   Future<void> _connectWs() async {
-    final token = await _storage.read(key: 'auth_token') ?? '';
-    final wsUrl = baseUrl.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
-    _ws = WebSocketChannel.connect(Uri.parse('$wsUrl/ws/chat'));
-    _ws!.stream.listen((raw) {
-      final data = jsonDecode(raw as String) as Map<String, dynamic>;
-      final type = data['type'] as String?;
-      if (type == 'auth_ok') {
-        _myUserId = data['userId'] as String?;
-        setState(() => _connected = true);
-        _ws!.sink.add(jsonEncode({'type': 'join', 'conversationId': widget.conversationId}));
-      } else if (type == 'message') {
-        setState(() => _messages.add(data));
-        _scrollToBottom();
-      } else if (type == 'typing') {
-        if (data['userId'] != _myUserId) {
-          setState(() => _otherTyping = true);
-          Future.delayed(const Duration(seconds: 3), () { if (mounted) setState(() => _otherTyping = false); });
+    if (_disposed) return;
+    try {
+      final token = await _storage.read(key: 'auth_token') ?? '';
+      final wsUrl = baseUrl.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
+      _ws = WebSocketChannel.connect(Uri.parse('$wsUrl/ws/chat'));
+      _ws!.stream.listen((raw) {
+        final data = jsonDecode(raw as String) as Map<String, dynamic>;
+        final type = data['type'] as String?;
+        if (type == 'auth_ok') {
+          _myUserId = data['userId'] as String?;
+          _reconnectAttempt = 0;
+          if (mounted) setState(() => _connected = true);
+          _ws!.sink.add(jsonEncode({'type': 'join', 'conversationId': widget.conversationId}));
+        } else if (type == 'message') {
+          if (mounted) setState(() => _messages.add(data));
+          _scrollToBottom();
+        } else if (type == 'typing') {
+          if (data['userId'] != _myUserId) {
+            if (mounted) setState(() => _otherTyping = true);
+            Future.delayed(const Duration(seconds: 3), () { if (mounted) setState(() => _otherTyping = false); });
+          }
+        } else if (type == 'error') {
+          if (mounted) {
+            MSnackbar.error(context, (data['message'] ?? 'Terjadi kesalahan').toString());
+          }
         }
-      } else if (type == 'error') {
-        if (mounted) {
-          MSnackbar.error(context, (data['message'] ?? 'Terjadi kesalahan').toString());
-        }
-      }
-    }, onError: (e) {
+      }, onError: (e) {
+        if (mounted) setState(() => _connected = false);
+        _scheduleReconnect();
+      }, onDone: () {
+        if (mounted) setState(() => _connected = false);
+        _scheduleReconnect();
+      });
+      _ws!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
+    } catch (_) {
       if (mounted) setState(() => _connected = false);
-    }, onDone: () {
-      if (mounted) setState(() => _connected = false);
-    });
-    _ws!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
+      _scheduleReconnect();
+    }
   }
 
   void _sendTyping() {
@@ -190,16 +213,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     ),
   );
 
-  Widget _inputBar() => Container(
+  Widget _inputBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
     padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 12),
     decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor,
-      border: Border(top: BorderSide(color: MyloColors.border.withAlpha(128)))),
+      border: Border(top: BorderSide(color: (isDark ? MyloColors.borderDark : MyloColors.border).withAlpha(128)))),
     child: Row(children: [
       Expanded(child: TextField(
         controller: _ctrl, onChanged: (_) => _sendTyping(),
         maxLines: null, textCapitalization: TextCapitalization.sentences,
+        style: TextStyle(color: isDark ? MyloColors.textPrimaryDark : MyloColors.textPrimary),
         decoration: InputDecoration(
-          hintText: 'Pesan...', filled: true, fillColor: MyloColors.surfaceSecondary,
+          hintText: 'Pesan...', filled: true,
+          fillColor: isDark ? MyloColors.surfaceSecondaryDark : MyloColors.surfaceSecondary,
+          hintStyle: const TextStyle(color: MyloColors.textTertiary),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
       )),
@@ -212,5 +240,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       ),
     ]),
   );
+  }
 }
 

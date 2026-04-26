@@ -136,7 +136,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               return StoryViewerScreen(initialIndex: idx);
             },
           ),
+          // Search lives inside Feed sekarang, /home/explore tetap valid sbg alias
           GoRoute(path: '/home/explore', builder: (_, __) => const ExploreScreen()),
+          GoRoute(path: '/home/feed/search', builder: (_, __) => const ExploreScreen()),
           GoRoute(
             path: '/home/users/:id/posts',
             builder: (_, s) => UserPostsScreen(

@@ -196,12 +196,12 @@ Future<Response> _addMembers(Request r, String id) async {
   final members = (body["userIds"] as List?)?.cast<String>() ?? const [];
   final db = await getDb();
   final isMember = await db.execute(Sql.named(
-      "SELECT 1 FROM conversation_members WHERE conversation_id = @c AND user_id = @u"),
+      "SELECT 1 FROM chat_members WHERE conversation_id = @c AND user_id = @u"),
       parameters: {"c": id, "u": uid});
   if (isMember.isEmpty) return forbidden("not in conversation");
   for (final m in members) {
     await db.execute(Sql.named("""
-      INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
+      INSERT INTO chat_members (conversation_id, user_id, role, joined_at)
       VALUES (@c, @u, 'member', NOW()) ON CONFLICT DO NOTHING
     """), parameters: {"c": id, "u": m});
   }
@@ -214,11 +214,11 @@ Future<Response> _removeMember(Request r, String id, String uid) async {
   // owner or self
   if (me != uid) {
     final isAdmin = await db.execute(Sql.named(
-        "SELECT 1 FROM conversation_members WHERE conversation_id = @c AND user_id = @u AND role = 'owner'"),
+        "SELECT 1 FROM chat_members WHERE conversation_id = @c AND user_id = @u AND role = 'owner'"),
         parameters: {"c": id, "u": me});
     if (isAdmin.isEmpty) return forbidden("only admin can remove others");
   }
-  await db.execute(Sql.named("DELETE FROM conversation_members WHERE conversation_id = @c AND user_id = @u"),
+  await db.execute(Sql.named("DELETE FROM chat_members WHERE conversation_id = @c AND user_id = @u"),
       parameters: {"c": id, "u": uid});
   return ok({"removed": true});
 }
@@ -227,15 +227,15 @@ Future<Response> _deleteConversation(Request r, String id) async {
   final me = _userId(r);
   final db = await getDb();
   final isOwner = await db.execute(Sql.named(
-      "SELECT 1 FROM conversation_members WHERE conversation_id = @c AND user_id = @u AND role = 'owner'"),
+      "SELECT 1 FROM chat_members WHERE conversation_id = @c AND user_id = @u AND role = 'owner'"),
       parameters: {"c": id, "u": me});
   if (isOwner.isEmpty) {
     // private chat: just remove self
-    await db.execute(Sql.named("DELETE FROM conversation_members WHERE conversation_id = @c AND user_id = @u"),
+    await db.execute(Sql.named("DELETE FROM chat_members WHERE conversation_id = @c AND user_id = @u"),
         parameters: {"c": id, "u": me});
     return ok({"left": true});
   }
-  await db.execute(Sql.named("DELETE FROM conversations WHERE id = @c"), parameters: {"c": id});
+  await db.execute(Sql.named("DELETE FROM chat_conversations WHERE id = @c"), parameters: {"c": id});
   return ok({"deleted": true});
 }
 

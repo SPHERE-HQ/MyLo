@@ -433,15 +433,19 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: const BoxDecoration(
-                border: Border(
-                    bottom: BorderSide(
-                        color: Colors.transparent, width: 2)),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => context.push('/home/browser/bookmarks'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: const BoxDecoration(
+                  border: Border(
+                      bottom: BorderSide(
+                          color: Colors.transparent, width: 2)),
+                ),
+                child: const Icon(Icons.bookmark_border,
+                    size: 22, color: MyloColors.textTertiary),
               ),
-              child: const Icon(Icons.bookmark_border,
-                  size: 22, color: MyloColors.textTertiary),
             ),
           ),
         ],

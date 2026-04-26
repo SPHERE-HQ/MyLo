@@ -50,6 +50,21 @@ jobs:
             --quiet
           cp -r /tmp/flutter_init/android ./android
 
+      # MainActivity harus FlutterFragmentActivity supaya local_auth (biometrik) jalan
+      - name: Patch MainActivity ke FlutterFragmentActivity
+        working-directory: mobile
+        run: |
+          MA=android/app/src/main/kotlin/com/spherehq/mylo/MainActivity.kt
+          if [ -f "$MA" ]; then
+            sed -i 's|import io.flutter.embedding.android.FlutterActivity|import io.flutter.embedding.android.FlutterFragmentActivity|g' "$MA"
+            sed -i 's|: FlutterActivity()|: FlutterFragmentActivity()|g' "$MA"
+            echo "=== MainActivity.kt setelah patch ==="
+            cat "$MA"
+          else
+            echo "WARNING: MainActivity.kt tidak ditemukan di $MA"
+            find android/app/src/main/kotlin -name 'MainActivity.kt' -exec cat {} \;
+          fi
+
       # ─────────────────────────────────────────────────────────
       # ANDROID MANIFEST — izin lengkap (kamera, mic, storage, dll)
       # ─────────────────────────────────────────────────────────

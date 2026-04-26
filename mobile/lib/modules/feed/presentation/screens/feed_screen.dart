@@ -26,6 +26,10 @@ class FeedScreen extends ConsumerWidget {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
         actions: [
           IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Cari',
+              onPressed: () => context.push('/home/feed/search')),
+          IconButton(
               icon: const Icon(Icons.notifications_outlined),
               onPressed: () => context.go('/home/notifications')),
         ],
@@ -244,7 +248,8 @@ class _PostCardState extends ConsumerState<_PostCard>
             IconButton(
               icon: const Icon(Icons.bookmark_border, size: 24),
               splashRadius: 20,
-              onPressed: () {},
+              tooltip: 'Lihat bookmark',
+              onPressed: () => context.push('/home/browser/bookmarks'),
             ),
           ]),
         ),

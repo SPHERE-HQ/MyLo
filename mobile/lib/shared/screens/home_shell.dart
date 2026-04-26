@@ -8,7 +8,7 @@ import '../widgets/m_side_drawer.dart';
 const _tabPaths = <String>[
   '/home/chat',
   '/home/feed',
-  '/home/explore',
+  '/home/browser',
   '/home/wallet',
   '/home/profile',
 ];
@@ -94,8 +94,8 @@ class _HomeShellState extends State<HomeShell> {
               icon: Icon(Icons.grid_view_outlined),
               selectedIcon: Icon(Icons.grid_view), label: 'Feed'),
             NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore), label: 'Explore'),
+              icon: Icon(Icons.public_outlined),
+              selectedIcon: Icon(Icons.public), label: 'Browser'),
             NavigationDestination(
               icon: Icon(Icons.account_balance_wallet_outlined),
               selectedIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
