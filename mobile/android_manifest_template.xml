@@ -7,7 +7,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
     <!-- ═══════════════════════════════════════════════════
          KAMERA & FOTO
@@ -23,14 +22,12 @@
     <!-- ═══════════════════════════════════════════════════
          PENYIMPANAN / MEDIA
     ════════════════════════════════════════════════════ -->
-    <!-- Android 9 ke bawah -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
-    <!-- Android 13 ke atas -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -46,7 +43,6 @@
     <!-- ═══════════════════════════════════════════════════
          NOTIFIKASI & PESAN
     ════════════════════════════════════════════════════ -->
-    <!-- Android 13 ke atas wajib minta izin notifikasi -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -63,7 +59,7 @@
         android:required="false" />
 
     <!-- ═══════════════════════════════════════════════════
-         LOKASI (opsional untuk fitur tertentu)
+         LOKASI (opsional)
     ════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -95,7 +91,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Deep link -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -105,7 +100,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Flutter plugin -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -119,21 +113,9 @@
             </intent-filter>
         </service>
 
-        <!-- FCM default channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="mylo_default" />
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_notification" />
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/notification_color" />
-
-        <!-- Hindari clear-text traffic ke domain tertentu -->
-        <meta-data
-            android:name="android.security.net.config"
-            android:resource="@xml/network_security_config" />
 
     </application>
 </manifest>
