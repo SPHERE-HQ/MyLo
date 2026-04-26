@@ -166,7 +166,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         border: Border.all(
-          color: _focusNodes[i].hasFocus ? MyloColors.primary : MyloColors.textSecondary.withOpacity(0.4),
+          color: _focusNodes[i].hasFocus ? MyloColors.primary : MyloColors.textSecondary.withAlpha(102),
           width: _focusNodes[i].hasFocus ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(10),
