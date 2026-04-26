@@ -75,7 +75,7 @@ class ServerMembersScreen extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: MyloColors.warning.withOpacity(0.2),
+                              color: MyloColors.warning.withAlpha(51),
                               borderRadius:
                                   BorderRadius.circular(MyloRadius.full),
                             ),
