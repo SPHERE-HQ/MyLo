@@ -181,28 +181,42 @@ jobs:
           with open(path) as f:
               content = f.read()
 
+          # 1. Tambah import Properties di paling atas file kalau belum ada.
+          #    java.util.Properties() tidak bisa dipakai langsung di dalam
+          #    android { } block karena Kotlin coba resolve `java` sebagai
+          #    member dari Android extension.
+          if 'import java.util.Properties' not in content:
+              content = 'import java.util.Properties\n' + content
+
+          # 2. Sisipkan deklarasi keyProps di FILE SCOPE (sebelum android { })
+          #    bukan di dalam android { }. rootProject.file("key.properties")
+          #    karena rootProject untuk Flutter android module = folder android/.
+          file_scope_block = '''
+          val keyProps = Properties().apply {
+              val f = rootProject.file("key.properties")
+              if (f.exists()) f.inputStream().use { load(this) }
+          }
+
+          '''
+          if 'val keyProps' not in content:
+              content = re.sub(r'(android\s*\{)', file_scope_block + r'\1', content, count=1)
+
+          # 3. Sisipkan signingConfigs block di awal android { } kalau belum ada
           signing_block = '''
-              val keyProps = java.util.Properties()
-              val keyFile = rootProject.file("../key.properties")
-              if (keyFile.exists()) {
-                  keyFile.inputStream().use { keyProps.load(it) }
-              }
               signingConfigs {
                   create("release") {
-                      storeFile = file(keyProps["storeFile"] as String? ?: "mylo-release.p12")
-                      storePassword = keyProps["storePassword"] as String? ?: ""
-                      keyAlias = keyProps["keyAlias"] as String? ?: "mylo"
-                      keyPassword = keyProps["keyPassword"] as String? ?: ""
+                      storeFile = file(keyProps.getProperty("storeFile") ?: "mylo-release.p12")
+                      storePassword = keyProps.getProperty("storePassword") ?: ""
+                      keyAlias = keyProps.getProperty("keyAlias") ?: "mylo"
+                      keyPassword = keyProps.getProperty("keyPassword") ?: ""
                       storeType = "PKCS12"
                   }
               }
           '''
-
-          # 1. Sisipkan signingConfigs block di awal android { } kalau belum ada
           if 'signingConfigs {' not in content and 'signingConfigs{' not in content:
               content = re.sub(r'(android\s*\{)', r'\1' + signing_block, content, count=1)
 
-          # 2. Paksa SEMUA referensi signingConfig (debug & release) ke release keystore
+          # 4. Paksa SEMUA referensi signingConfig (debug & release) ke release keystore
           #    Flutter create defaultnya: signingConfig = signingConfigs.getByName("debug")
           content = re.sub(
               r'signingConfig\s*=\s*signingConfigs\.getByName\([^)]*\)',
@@ -210,7 +224,7 @@ jobs:
               content
           )
 
-          # 3. Kalau release { } block tidak punya signingConfig sama sekali, tambahkan
+          # 5. Kalau release { } block tidak punya signingConfig sama sekali, tambahkan
           if not re.search(r'release\s*\{[^}]*signingConfig', content, re.DOTALL):
               content = re.sub(
                   r'(release\s*\{)',
@@ -232,7 +246,7 @@ jobs:
 
           signing_block = '''
               def keyProps = new java.util.Properties()
-              def keyFile = rootProject.file('../key.properties')
+              def keyFile = rootProject.file('key.properties')
               if (keyFile.exists()) {
                   keyFile.withInputStream { keyProps.load(it) }
               }
