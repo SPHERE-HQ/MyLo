@@ -30,7 +30,7 @@ class MEmptyState extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: MyloColors.primary.withOpacity(.1),
+                color: MyloColors.primary.withAlpha(26),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 48, color: MyloColors.primary),
