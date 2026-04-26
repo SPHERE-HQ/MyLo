@@ -29,7 +29,6 @@ dependencies:
 
   # WebRTC voice/video calls
   flutter_webrtc: ^0.12.5
-  permission_handler: ^11.3.1
 
   # Firebase
   firebase_core: ^3.8.0
