@@ -13,11 +13,11 @@ class MBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = switch (variant) {
-      MBadgeVariant.primary => (MyloColors.primary.withOpacity(.15), MyloColors.primary),
-      MBadgeVariant.success => (MyloColors.accent.withOpacity(.15), MyloColors.accent),
+      MBadgeVariant.primary => (MyloColors.primary.withAlpha(38), MyloColors.primary),
+      MBadgeVariant.success => (MyloColors.accent.withAlpha(38), MyloColors.accent),
       MBadgeVariant.warning => (const Color(0xFFFFE7B3), const Color(0xFFB76E00)),
-      MBadgeVariant.danger => (MyloColors.danger.withOpacity(.15), MyloColors.danger),
-      MBadgeVariant.neutral => (Colors.grey.withOpacity(.15), Colors.grey.shade700),
+      MBadgeVariant.danger => (MyloColors.danger.withAlpha(38), MyloColors.danger),
+      MBadgeVariant.neutral => (Colors.grey.withAlpha(38), Colors.grey.shade700),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
