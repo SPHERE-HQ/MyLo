@@ -27,7 +27,7 @@ class MBottomSheet {
                   margin: const EdgeInsets.only(top: 8, bottom: 8),
                   width: 40, height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(.4),
+                    color: Colors.grey.withAlpha(102),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
