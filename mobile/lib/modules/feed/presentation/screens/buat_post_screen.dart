@@ -305,7 +305,7 @@ class _BuatPostScreenState extends ConsumerState<BuatPostScreen> {
                                     shape: BoxShape.circle,
                                     color: i == cur
                                         ? MyloColors.primary
-                                        : Colors.white.withOpacity(0.6),
+                                        : Colors.white.withAlpha(153),
                                   ),
                                 ),
                               ),
