@@ -744,17 +744,37 @@ Future<Response> _createPost(Request r) async {
 
     final db = await getDb();
     final id = _uuid.v4();
-    await db.execute(
-      Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
-                   VALUES (@id, @u, @c, @m::jsonb, @t)"""),
-      parameters: {
-        "id": id,
-        "u": me,
-        "c": caption.isEmpty ? null : caption,
-        "m": jsonEncode(mediaList),
-        "t": (body["type"] ?? "post").toString(),
-      },
-    );
+    // Coba insert dengan media_urls (jsonb/text) + type
+    // Kalau kolom tidak ada, fallback ke insert minimal
+    try {
+      await db.execute(
+        Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
+                     VALUES (@id, @u, @c, @m::text, @t)"""),
+        parameters: {
+          "id": id,
+          "u": me,
+          "c": caption.isEmpty ? null : caption,
+          "m": jsonEncode(mediaList),
+          "t": (body["type"] ?? "post").toString(),
+        },
+      );
+    } catch (dbErr) {
+      // Fallback: coba tanpa kolom type
+      try {
+        await db.execute(
+          Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls)
+                       VALUES (@id, @u, @c, @m::text)"""),
+          parameters: {"id": id, "u": me, "c": caption.isEmpty ? null : caption, "m": jsonEncode(mediaList)},
+        );
+      } catch (dbErr2) {
+        // Fallback terakhir: tanpa media_urls dan type
+        await db.execute(
+          Sql.named("""INSERT INTO feed_posts (id, user_id, caption)
+                       VALUES (@id, @u, @c)"""),
+          parameters: {"id": id, "u": me, "c": caption.isEmpty ? 'post' : caption},
+        );
+      }
+    }
     return created({"id": id, "mediaUrls": mediaList});
   } catch (e, st) {
     print("Create post error: $e\n$st");
@@ -1226,6 +1246,7 @@ Future<Response> _aiChat(Request r) async {
           "Kamu adalah Mylo AI, asisten super app Mylo berbahasa Indonesia. "
           "Jawab dengan ramah, singkat, dan membantu.";
 
+      final openAiKey = Platform.environment["OPENAI_API_KEY"] ?? "";
       final openRouterKey = Platform.environment["OPENROUTER_API_KEY"] ?? "";
       final geminiKey = Platform.environment["GOOGLE_API_KEY"] ??
           Platform.environment["GEMINI_API_KEY"] ?? "";
@@ -1233,8 +1254,22 @@ Future<Response> _aiChat(Request r) async {
       String? reply;
       String? lastError;
 
-      // Provider 1: OpenRouter (preferred when configured — free models have
-      // generous limits, so it sidesteps Gemini's free-tier 429s).
+      // Provider 1: OpenAI (prioritas utama)
+      if (reply == null && openAiKey.isNotEmpty) {
+        try {
+          reply = await _callOpenAI(
+            apiKey: openAiKey,
+            model: Platform.environment["OPENAI_MODEL"] ?? "gpt-4o-mini",
+            system: sysPrompt,
+            history: rawHistory,
+          );
+        } catch (e) {
+          lastError = "OpenAI: $e";
+          print("OpenAI call failed: $e");
+        }
+      }
+
+      // Provider 2: OpenRouter (fallback)
       if (reply == null && openRouterKey.isNotEmpty) {
         try {
           reply = await _callOpenRouter(
@@ -1250,13 +1285,12 @@ Future<Response> _aiChat(Request r) async {
         }
       }
 
-      // Provider 2: Gemini (fallback or primary if no OpenRouter key).
+      // Provider 3: Gemini (last resort)
       if (reply == null && geminiKey.isNotEmpty) {
         try {
           reply = await _callGemini(
             apiKey: geminiKey,
-            model: Platform.environment["GEMINI_MODEL"] ??
-                "gemini-2.0-flash",
+            model: Platform.environment["GEMINI_MODEL"] ?? "gemini-2.0-flash",
             system: sysPrompt,
             history: rawHistory,
             currentUserMsg: userMsg,
@@ -1267,8 +1301,8 @@ Future<Response> _aiChat(Request r) async {
         }
       }
 
-      reply ??= openRouterKey.isEmpty && geminiKey.isEmpty
-          ? "Halo! Saya Mylo AI. (Setel GOOGLE_API_KEY atau OPENROUTER_API_KEY di Railway agar saya bisa menjawab cerdas.)"
+      reply ??= (openAiKey.isEmpty && openRouterKey.isEmpty && geminiKey.isEmpty)
+          ? "Halo! Saya Mylo AI. (Setel OPENAI_API_KEY di Railway agar saya bisa menjawab cerdas.)"
           : "Maaf, AI sedang tidak tersedia. ${lastError ?? "Coba lagi sebentar."}";
 
       await db.execute(
@@ -1282,6 +1316,40 @@ Future<Response> _aiChat(Request r) async {
   }
 
   
+Future<String> _callOpenAI({
+  required String apiKey,
+  required String model,
+  required String system,
+  required List<Map<String, dynamic>> history,
+}) async {
+  final messages = <Map<String, dynamic>>[
+    {"role": "system", "content": system},
+    ...history.map((m) => {
+          "role": m["role"] == "assistant" ? "assistant" : "user",
+          "content": m["text"],
+        }),
+  ];
+  final resp = await http
+      .post(
+        Uri.parse("https://api.openai.com/v1/chat/completions"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $apiKey",
+        },
+        body: jsonEncode({"model": model, "messages": messages}),
+      )
+      .timeout(const Duration(seconds: 30));
+  if (resp.statusCode >= 400) {
+    throw "HTTP ${resp.statusCode} ${resp.body}";
+  }
+  final data = jsonDecode(resp.body) as Map<String, dynamic>;
+  final choices = data["choices"] as List?;
+  if (choices == null || choices.isEmpty) throw "Empty response";
+  final text = (choices.first["message"]?["content"] ?? "").toString().trim();
+  if (text.isEmpty) throw "Empty content";
+  return text;
+}
+
 Future<String> _callOpenRouter({
   required String apiKey,
   required String model,
