@@ -67,15 +67,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final convAsync = ref.watch(conversationsProvider);
-    final meAsync = ref.watch(currentUserProvider);
-    final myId = meAsync.valueOrNull?['id']?.toString() ?? '';
+    final meAsync = ref.watch(authStateProvider);
+    final myId = meAsync.valueOrNull?.id ?? '';
 
     return Scaffold(
       appBar: AppBar(
         title: _showSearch
             ? MTextField.search(
                 controller: _searchCtrl,
-                hintText: 'Cari pengguna...',
+                hint: 'Cari pengguna...',
                 onChanged: (v) => setState(() => _searchQuery = v),
               )
             : const Text('Mylo'),
@@ -103,7 +103,22 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           : RefreshIndicator(
               onRefresh: () async => ref.invalidate(conversationsProvider),
               child: convAsync.when(
-                loading: () => const MLoadingSkeleton(),
+                loading: () => ListView.separated(
+                  itemCount: 8,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(children: [
+                      const MLoadingSkeleton(height: 44, width: 44, borderRadius: 22),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const MLoadingSkeleton(height: 14, width: 120),
+                        const SizedBox(height: 6),
+                        const MLoadingSkeleton(height: 12),
+                      ])),
+                    ]),
+                  ),
+                ),
                 error: (e, _) => Center(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.error_outline, size: 40),
