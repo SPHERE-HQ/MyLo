@@ -108,12 +108,15 @@ jobs:
           fi
 
           # Fix minSdkVersion ke 21 (wajib untuk local_auth & flutter_secure_storage)
+          # Pakai .* agar mengganti seluruh value (termasuk flutter.minSdkVersion)
           if [ -n "$APP_GRADLE" ]; then
             if [[ "$APP_GRADLE" == *.kts ]]; then
-              sed -i 's/minSdk = [0-9]*/minSdk = 21/' "$APP_GRADLE" || true
+              sed -i 's/minSdk\s*=\s*.*/minSdk = 21/' "$APP_GRADLE" || true
             else
-              sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' "$APP_GRADLE" || true
+              sed -i 's/minSdkVersion\s.*/minSdkVersion 21/' "$APP_GRADLE" || true
             fi
+            echo "minSdk setelah patch:"
+            grep -n "minSdk" "$APP_GRADLE" || true
           fi
 
       # ─────────────────────────────────────────────────────────
