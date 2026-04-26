@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -10,21 +13,25 @@ import '../../../../core/api/api_client.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/widgets/m_avatar.dart';
 import '../../../../shared/widgets/m_snackbar.dart';
+import '../widgets/sticker_picker.dart';
 
 const _storage = FlutterSecureStorage();
 const _uuid = Uuid();
 
 enum _MsgStatus { pending, sent, delivered, read }
+enum _Panel { none, emoji, sticker }
 
 class ChatRoomScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String otherUserName;
   final String? otherUserAvatar;
+  final String? otherUserId;
   const ChatRoomScreen({
     super.key,
     required this.conversationId,
     required this.otherUserName,
     this.otherUserAvatar,
+    this.otherUserId,
   });
 
   @override
@@ -34,6 +41,7 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
 class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
+  final _focus = FocusNode();
   WebSocketChannel? _ws;
   String? _myUserId;
   final List<Map<String, dynamic>> _messages = [];
@@ -45,16 +53,20 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   bool _connected = false;
   bool _disposed = false;
   int _reconnectAttempt = 0;
-  // Local hide for "Delete for me".
   final Set<String> _hiddenIds = {};
-  // Voice room participants currently in the conversation.
   final Set<String> _voiceParticipants = {};
+  _Panel _panel = _Panel.none;
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
     _connectWs();
+    _focus.addListener(() {
+      if (_focus.hasFocus && _panel != _Panel.none) {
+        setState(() => _panel = _Panel.none);
+      }
+    });
   }
 
   @override
@@ -62,6 +74,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _disposed = true;
     _ctrl.dispose();
     _scroll.dispose();
+    _focus.dispose();
     _ws?.sink.close();
     _typingTimer?.cancel();
     _typingClearTimer?.cancel();
@@ -97,7 +110,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   Map<String, dynamic> _normalize(Map<String, dynamic> m) {
-    // Track local status for own messages. Default = sent for history.
     m['_status'] ??= _MsgStatus.sent.index;
     return m;
   }
@@ -129,40 +141,32 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         if (mounted) setState(() => _connected = true);
         _ws!.sink.add(jsonEncode({'type': 'join', 'conversationId': widget.conversationId}));
         break;
-
       case 'voice_room_state':
         if (data['conversationId'] == widget.conversationId) {
           final list = (data['participants'] as List?)?.cast<String>() ?? const [];
-          setState(() => _voiceParticipants
-            ..clear()
-            ..addAll(list));
+          setState(() => _voiceParticipants..clear()..addAll(list));
         }
         break;
-
       case 'voice_user_joined':
         if (data['conversationId'] == widget.conversationId) {
           final uid = data['userId'] as String?;
           if (uid != null) setState(() => _voiceParticipants.add(uid));
         }
         break;
-
       case 'voice_user_left':
         if (data['conversationId'] == widget.conversationId) {
           final uid = data['userId'] as String?;
           if (uid != null) setState(() => _voiceParticipants.remove(uid));
         }
         break;
-
       case 'message':
         if (mounted) {
           setState(() => _messages.add(_normalize(Map<String, dynamic>.from(data))));
           _scrollToBottom();
         }
-        // Mark this message as read (we are looking at the chat).
         final id = data['id'] as String?;
         if (id != null) _ws?.sink.add(jsonEncode({'type': 'read', 'messageId': id}));
         break;
-
       case 'message_ack':
         final clientId = data['clientMsgId'] as String?;
         final realId = data['id'] as String?;
@@ -177,7 +181,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           });
         }
         break;
-
       case 'delivered':
         final id = data['messageId'] as String?;
         final idx = _messages.indexWhere((m) => m['id'] == id);
@@ -190,9 +193,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           });
         }
         break;
-
       case 'read':
-        // Other side marked everything up to uptoCreatedAt as read.
         final uptoStr = data['uptoCreatedAt'] as String?;
         final upto = uptoStr != null ? DateTime.tryParse(uptoStr) : null;
         if (upto != null && mounted) {
@@ -208,7 +209,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           });
         }
         break;
-
       case 'message_deleted':
         final id = data['messageId'] as String?;
         final idx = _messages.indexWhere((m) => m['id'] == id);
@@ -216,10 +216,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           setState(() {
             _messages[idx]['isDeleted'] = true;
             _messages[idx]['content'] = null;
+            _messages[idx]['mediaUrl'] = null;
           });
         }
         break;
-
       case 'typing':
         if (data['userId'] != _myUserId && mounted) {
           setState(() => _otherTyping = true);
@@ -228,7 +228,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               () { if (mounted) setState(() => _otherTyping = false); });
         }
         break;
-
       case 'error':
         if (mounted) MSnackbar.error(context, (data['message'] ?? 'Terjadi kesalahan').toString());
         break;
@@ -254,31 +253,39 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _typingTimer = Timer(const Duration(seconds: 2), () => _isTyping = false);
   }
 
-  void _sendMessage() {
+  void _sendText() {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
+    _sendMessage(content: text, msgType: 'text');
+    _ctrl.clear();
+    _isTyping = false;
+  }
+
+  void _sendSticker(String url) {
+    _sendMessage(content: null, msgType: 'sticker', mediaUrl: url);
+  }
+
+  void _sendMessage({String? content, required String msgType, String? mediaUrl}) {
     final clientId = _uuid.v4();
     final temp = <String, dynamic>{
-      'id': clientId,
-      '_clientMsgId': clientId,
+      'id': clientId, '_clientMsgId': clientId,
       'senderId': _myUserId,
-      'content': text,
-      'msgType': 'text',
+      'content': content, 'msgType': msgType,
+      'mediaUrl': mediaUrl,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       '_status': _MsgStatus.pending.index,
     };
     setState(() => _messages.add(temp));
     _scrollToBottom();
-    _ctrl.clear();
-    _isTyping = false;
-
     if (_connected && _ws != null) {
       _ws!.sink.add(jsonEncode({
-        'type': 'message', 'content': text, 'msgType': 'text', 'clientMsgId': clientId,
+        'type': 'message',
+        'content': content,
+        'msgType': msgType,
+        'mediaUrl': mediaUrl,
+        'clientMsgId': clientId,
       }));
     }
-    // If not connected, message stays "pending" until WS reconnects.
-    // Reconnect logic doesn't auto-resend yet — surface that to the user.
   }
 
   void _showMessageMenu(Map<String, dynamic> msg) {
@@ -297,7 +304,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               title: const Text('Salin'),
               onTap: () {
                 Navigator.pop(ctx);
-                // Clipboard copy via Material's Clipboard would need services import.
+                Clipboard.setData(ClipboardData(text: msg['content'] as String));
                 MSnackbar.success(context, 'Tersalin');
               },
             ),
@@ -333,36 +340,74 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   });
 
+  void _openProfile() {
+    final uid = widget.otherUserId;
+    if (uid == null || uid.isEmpty) return;
+    context.push('/home/users/$uid');
+  }
+
+  void _openVoice(bool video) {
+    setState(() => _panel = _Panel.none);
+    context.push('/home/chat/${widget.conversationId}/voice'
+        '?video=${video ? 1 : 0}'
+        '&name=${Uri.encodeComponent(widget.otherUserName)}');
+  }
+
+  void _openStickerPicker() {
+    _focus.unfocus();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: false,
+      builder: (_) => StickerPicker(onSelected: _sendSticker),
+    );
+  }
+
+  void _toggleEmoji() {
+    if (_panel == _Panel.emoji) {
+      setState(() => _panel = _Panel.none);
+      _focus.requestFocus();
+    } else {
+      _focus.unfocus();
+      setState(() => _panel = _Panel.emoji);
+    }
+  }
+
   // ─── UI ───────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final inVoice = _voiceParticipants.isNotEmpty;
+    final canTapName = (widget.otherUserId ?? '').isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(children: [
-          MAvatar(name: widget.otherUserName, url: widget.otherUserAvatar, size: MAvatarSize.sm),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.otherUserName,
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              Text(_otherTyping ? 'Mengetik...' : (_connected ? 'Online' : 'Menghubungkan...'),
-                  style: TextStyle(fontSize: 11,
-                      color: _connected ? MyloColors.accent : MyloColors.textTertiary)),
+        title: InkWell(
+          onTap: canTapName ? _openProfile : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(children: [
+              MAvatar(name: widget.otherUserName, url: widget.otherUserAvatar, size: MAvatarSize.sm),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.otherUserName,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(_otherTyping ? 'Mengetik...' : (_connected ? 'Online' : 'Menghubungkan...'),
+                      style: TextStyle(fontSize: 11,
+                          color: _connected ? MyloColors.accent : MyloColors.textTertiary)),
+                ]),
+              ),
             ]),
           ),
-        ]),
+        ),
         actions: [
           IconButton(
-            tooltip: 'Panggilan suara',
-            icon: const Icon(Icons.call_outlined),
+            tooltip: 'Panggilan suara', icon: const Icon(Icons.call_outlined),
             onPressed: () => _openVoice(false),
           ),
           IconButton(
-            tooltip: 'Panggilan video',
-            icon: const Icon(Icons.videocam_outlined),
+            tooltip: 'Panggilan video', icon: const Icon(Icons.videocam_outlined),
             onPressed: () => _openVoice(true),
           ),
         ],
@@ -370,25 +415,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       body: Column(children: [
         if (inVoice) _voiceBanner(),
         Expanded(
-          child: ListView.builder(
-            controller: _scroll,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: _visibleMessages.length + (_otherTyping ? 1 : 0),
-            itemBuilder: (ctx, i) {
-              if (_otherTyping && i == _visibleMessages.length) return _typingBubble();
-              return _messageBubble(_visibleMessages[i]);
-            },
+          child: GestureDetector(
+            onTap: () { if (_panel != _Panel.none) setState(() => _panel = _Panel.none); _focus.unfocus(); },
+            child: ListView.builder(
+              controller: _scroll,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: _visibleMessages.length + (_otherTyping ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (_otherTyping && i == _visibleMessages.length) return _typingBubble();
+                return _messageBubble(_visibleMessages[i]);
+              },
+            ),
           ),
         ),
         _inputBar(),
+        if (_panel == _Panel.emoji) _emojiPanel(),
       ]),
     );
-  }
-
-  void _openVoice(bool video) {
-    context.push('/home/chat/${widget.conversationId}/voice'
-        '?video=${video ? 1 : 0}'
-        '&name=${Uri.encodeComponent(widget.otherUserName)}');
   }
 
   Widget _voiceBanner() => Material(
@@ -419,12 +462,51 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final senderId = (msg['senderId'] ?? (msg['sender'] as Map?)?['id']) as String?;
     final isMine = senderId == _myUserId;
     final isDeleted = msg['isDeleted'] == true;
+    final msgType = (msg['msgType'] ?? msg['type'] ?? 'text') as String;
+    final mediaUrl = msg['mediaUrl'] as String?;
+    final isSticker = msgType == 'sticker' && !isDeleted && mediaUrl != null;
     final content = isDeleted ? 'Pesan dihapus' : (msg['content'] as String? ?? '');
     final createdAt = msg['createdAt'] != null
         ? DateTime.tryParse(msg['createdAt'] as String)?.toLocal()
         : null;
     final status = _MsgStatus.values[(msg['_status'] as int? ?? _MsgStatus.sent.index)
         .clamp(0, _MsgStatus.values.length - 1)];
+
+    if (isSticker) {
+      return GestureDetector(
+        onLongPress: () => _showMessageMenu(msg),
+        child: Align(
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: CachedNetworkImage(
+                    imageUrl: mediaUrl,
+                    width: 140, height: 140, fit: BoxFit.contain,
+                    placeholder: (_, __) => const SizedBox(width: 140, height: 140,
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                    errorWidget: (_, __, ___) => const SizedBox(width: 140, height: 140,
+                        child: Icon(Icons.broken_image_outlined)),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (createdAt != null)
+                    Text(_hhmm(createdAt),
+                        style: const TextStyle(color: MyloColors.textTertiary, fontSize: 10)),
+                  if (isMine) ...[const SizedBox(width: 4), _statusIcon(status, mine: true, dark: true)],
+                ]),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onLongPress: () => _showMessageMenu(msg),
       child: Align(
@@ -442,8 +524,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             ),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(
-              content,
+            Text(content,
               style: TextStyle(
                 color: isMine ? Colors.white : MyloColors.textPrimary,
                 fontSize: 14,
@@ -453,15 +534,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             const SizedBox(height: 3),
             Row(mainAxisSize: MainAxisSize.min, children: [
               if (createdAt != null)
-                Text(
-                  '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                      color: isMine ? Colors.white70 : MyloColors.textTertiary, fontSize: 10),
-                ),
-              if (isMine) ...[
-                const SizedBox(width: 4),
-                _statusIcon(status),
-              ],
+                Text(_hhmm(createdAt),
+                    style: TextStyle(
+                        color: isMine ? Colors.white70 : MyloColors.textTertiary, fontSize: 10)),
+              if (isMine) ...[const SizedBox(width: 4), _statusIcon(status)],
             ]),
           ]),
         ),
@@ -469,14 +545,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     );
   }
 
-  Widget _statusIcon(_MsgStatus s) {
+  String _hhmm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Widget _statusIcon(_MsgStatus s, {bool mine = true, bool dark = false}) {
+    final muted = dark ? MyloColors.textTertiary : Colors.white70;
     switch (s) {
       case _MsgStatus.pending:
-        return const Icon(Icons.access_time, size: 12, color: Colors.white70);
+        return Icon(Icons.access_time, size: 12, color: muted);
       case _MsgStatus.sent:
-        return const Icon(Icons.check, size: 14, color: Colors.white70);
+        return Icon(Icons.check, size: 14, color: muted);
       case _MsgStatus.delivered:
-        return const Icon(Icons.done_all, size: 14, color: Colors.white70);
+        return Icon(Icons.done_all, size: 14, color: muted);
       case _MsgStatus.read:
         return const Icon(Icons.done_all, size: 14, color: Color(0xFF5DC7FF));
     }
@@ -489,33 +569,35 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
           color: MyloColors.surfaceSecondary, borderRadius: BorderRadius.circular(18)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(3, (i) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Container(width: 7, height: 7,
-              decoration: const BoxDecoration(color: MyloColors.textTertiary, shape: BoxShape.circle)),
-        )),
-      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Container(width: 7, height: 7,
+            decoration: const BoxDecoration(color: MyloColors.textTertiary, shape: BoxShape.circle)),
+      ))),
     ),
   );
 
   Widget _inputBar() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 12),
+      padding: EdgeInsets.fromLTRB(8, 8, 8, _panel == _Panel.emoji ? 8 : MediaQuery.of(context).viewInsets.bottom + 12),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(
             top: BorderSide(color: (isDark ? MyloColors.borderDark : MyloColors.border).withAlpha(128))),
       ),
       child: Row(children: [
+        IconButton(
+          tooltip: _panel == _Panel.emoji ? 'Tutup emoji' : 'Emoji',
+          icon: Icon(_panel == _Panel.emoji ? Icons.keyboard_outlined : Icons.emoji_emotions_outlined,
+              color: MyloColors.textSecondary),
+          onPressed: _toggleEmoji,
+        ),
         Expanded(
           child: TextField(
-            controller: _ctrl,
+            controller: _ctrl, focusNode: _focus,
             onChanged: (_) => _sendTyping(),
-            maxLines: null,
-            textCapitalization: TextCapitalization.sentences,
+            maxLines: null, textCapitalization: TextCapitalization.sentences,
             style: TextStyle(color: isDark ? MyloColors.textPrimaryDark : MyloColors.textPrimary),
             decoration: InputDecoration(
               hintText: 'Pesan...', filled: true,
@@ -524,10 +606,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              suffixIcon: IconButton(
+                tooltip: 'Sticker',
+                icon: const Icon(Icons.sticky_note_2_outlined, color: MyloColors.textSecondary),
+                onPressed: _openStickerPicker,
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
         ValueListenableBuilder(
           valueListenable: _ctrl,
           builder: (_, v, __) => v.text.trim().isEmpty
@@ -537,10 +624,36 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 )
               : IconButton(
                   icon: const Icon(Icons.send, color: MyloColors.primary, size: 26),
-                  onPressed: _sendMessage,
+                  onPressed: _sendText,
                 ),
         ),
       ]),
     );
   }
+
+  Widget _emojiPanel() => SizedBox(
+    height: 280,
+    child: EmojiPicker(
+      textEditingController: _ctrl,
+      onEmojiSelected: (_, __) => _sendTyping(),
+      config: Config(
+        height: 280,
+        emojiViewConfig: EmojiViewConfig(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          columns: 8, emojiSizeMax: 28,
+        ),
+        bottomActionBarConfig: BottomActionBarConfig(
+          backgroundColor: Theme.of(context).cardColor,
+          buttonColor: Theme.of(context).cardColor,
+          buttonIconColor: MyloColors.textSecondary,
+        ),
+        categoryViewConfig: CategoryViewConfig(
+          backgroundColor: Theme.of(context).cardColor,
+          iconColor: MyloColors.textTertiary,
+          iconColorSelected: MyloColors.primary,
+          indicatorColor: MyloColors.primary,
+        ),
+      ),
+    ),
+  );
 }

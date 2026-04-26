@@ -48,10 +48,18 @@ Router buildRouter() {
   // Chat
   protected.get("/chat/conversations", _listConversations);
   protected.post("/chat/conversations", _createConversation);
+  protected.delete("/chat/conversations/<id>", _leaveConversation);
+  protected.post("/chat/conversations/<id>/archive", _archiveConversation);
   protected.get("/chat/conversations/<id>/messages", _listMessages);
   protected.post("/chat/conversations/<id>/messages", _sendMessage);
   protected.delete("/chat/messages/<id>", _deleteMessage);
   protected.post("/chat/conversations/<id>/read", _markRead);
+
+  // Stickers (custom user-uploaded stickers)
+  protected.get("/stickers", _listStickers);
+  protected.post("/stickers", _createSticker);
+  protected.patch("/stickers/<id>", _updateSticker);
+  protected.delete("/stickers/<id>", _deleteSticker);
 
   // Stories
   protected.get("/stories", _listStories);
@@ -457,20 +465,21 @@ Future<Response> _userFollowing(Request r, String id) async {
 // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 Future<Response> _listConversations(Request r) async {
   final me = r.context["userId"] as String;
+  final archived = (r.url.queryParameters["archived"] ?? "0") == "1";
   final db = await getDb();
   final res = await db.execute(
     Sql.named("""
-      SELECT c.id, c.type, c.name, c.avatar_url, c.created_at,
+      SELECT c.id, c.type, c.name, c.avatar_url, c.created_at, m.archived,
         (SELECT content FROM chat_messages WHERE conversation_id=c.id AND is_deleted=FALSE
          ORDER BY created_at DESC LIMIT 1) as last_message,
         (SELECT created_at FROM chat_messages WHERE conversation_id=c.id
          ORDER BY created_at DESC LIMIT 1) as last_at
       FROM chat_conversations c
       JOIN chat_members m ON m.conversation_id=c.id
-      WHERE m.user_id=@me
+      WHERE m.user_id=@me AND COALESCE(m.archived, FALSE) = @arch
       ORDER BY last_at DESC NULLS LAST, c.created_at DESC
     """),
-    parameters: {"me": me},
+    parameters: {"me": me, "arch": archived},
   );
   final conversations = <Map<String, dynamic>>[];
   for (final row in res) {
@@ -484,6 +493,7 @@ Future<Response> _listConversations(Request r) async {
     conversations.add({
       "id": m["id"], "type": m["type"], "name": m["name"], "avatarUrl": m["avatar_url"],
       "lastMessage": m["last_message"], "lastAt": m["last_at"]?.toString(),
+      "archived": m["archived"] == true,
       "members": members.map((u) {
         final um = u.toColumnMap();
         return {"id": um["id"], "username": um["username"], "displayName": um["display_name"], "avatarUrl": um["avatar_url"]};
@@ -491,6 +501,132 @@ Future<Response> _listConversations(Request r) async {
     });
   }
   return ok(conversations);
+}
+
+Future<Response> _leaveConversation(Request r, String id) async {
+  try {
+    final me = r.context["userId"] as String;
+    final db = await getDb();
+    await db.execute(
+      Sql.named("DELETE FROM chat_members WHERE conversation_id=@c AND user_id=@u"),
+      parameters: {"c": id, "u": me},
+    );
+    // If no members left, drop the entire conversation.
+    final left = await db.execute(
+      Sql.named("SELECT COUNT(*)::int FROM chat_members WHERE conversation_id=@c"),
+      parameters: {"c": id},
+    );
+    if ((left.first[0] as int) == 0) {
+      await db.execute(
+        Sql.named("DELETE FROM chat_conversations WHERE id=@c"),
+        parameters: {"c": id},
+      );
+    }
+    return ok({"deleted": true});
+  } catch (e) {
+    return serverError("Leave error: $e");
+  }
+}
+
+Future<Response> _archiveConversation(Request r, String id) async {
+  try {
+    final me = r.context["userId"] as String;
+    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+    final archived = body["archived"] == true;
+    final db = await getDb();
+    final res = await db.execute(
+      Sql.named("""UPDATE chat_members SET archived=@a
+                   WHERE conversation_id=@c AND user_id=@u RETURNING user_id"""),
+      parameters: {"a": archived, "c": id, "u": me},
+    );
+    if (res.isEmpty) return notFound("Bukan anggota");
+    return ok({"archived": archived});
+  } catch (e) {
+    return serverError("Archive error: $e");
+  }
+}
+
+// ─── STICKERS ─────────────────────────────────────────────────────
+Future<Response> _listStickers(Request r) async {
+  final me = r.context["userId"] as String;
+  final db = await getDb();
+  final res = await db.execute(
+    Sql.named("""SELECT id, name, image_url, mime_type, is_favorite, created_at
+                 FROM stickers WHERE owner_id=@me
+                 ORDER BY is_favorite DESC, created_at DESC"""),
+    parameters: {"me": me},
+  );
+  return ok(res.map((row) {
+    final m = row.toColumnMap();
+    return {
+      "id": m["id"], "name": m["name"], "imageUrl": m["image_url"],
+      "mimeType": m["mime_type"], "isFavorite": m["is_favorite"] == true,
+      "createdAt": m["created_at"]?.toString(),
+    };
+  }).toList());
+}
+
+Future<Response> _createSticker(Request r) async {
+  try {
+    final me = r.context["userId"] as String;
+    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+    final name = (body["name"] as String?)?.trim();
+    final imageUrl = (body["imageUrl"] as String?)?.trim();
+    final mime = body["mimeType"] as String?;
+    final isFav = body["isFavorite"] == true;
+    if (name == null || name.isEmpty) return badRequest("Nama wajib");
+    if (imageUrl == null || imageUrl.isEmpty) return badRequest("imageUrl wajib");
+    final db = await getDb();
+    final id = _uuid.v4();
+    await db.execute(
+      Sql.named("""INSERT INTO stickers (id, owner_id, name, image_url, mime_type, is_favorite)
+                   VALUES (@id, @me, @n, @url, @mime, @fav)"""),
+      parameters: {"id": id, "me": me, "n": name, "url": imageUrl, "mime": mime, "fav": isFav},
+    );
+    return created({
+      "id": id, "name": name, "imageUrl": imageUrl,
+      "mimeType": mime, "isFavorite": isFav,
+    });
+  } catch (e) {
+    return serverError("Sticker create error: $e");
+  }
+}
+
+Future<Response> _updateSticker(Request r, String id) async {
+  try {
+    final me = r.context["userId"] as String;
+    final body = jsonDecode(await r.readAsString()) as Map<String, dynamic>;
+    final db = await getDb();
+    final fields = <String>[];
+    final params = <String, dynamic>{"id": id, "me": me};
+    if (body.containsKey("isFavorite")) {
+      fields.add("is_favorite=@fav");
+      params["fav"] = body["isFavorite"] == true;
+    }
+    if (body.containsKey("name")) {
+      fields.add("name=@n");
+      params["n"] = body["name"];
+    }
+    if (fields.isEmpty) return badRequest("Tidak ada field");
+    final res = await db.execute(
+      Sql.named("UPDATE stickers SET ${fields.join(", ")} WHERE id=@id AND owner_id=@me RETURNING id"),
+      parameters: params,
+    );
+    if (res.isEmpty) return notFound("Sticker tidak ditemukan");
+    return ok({"updated": true});
+  } catch (e) {
+    return serverError("Sticker update error: $e");
+  }
+}
+
+Future<Response> _deleteSticker(Request r, String id) async {
+  final me = r.context["userId"] as String;
+  final db = await getDb();
+  await db.execute(
+    Sql.named("DELETE FROM stickers WHERE id=@id AND owner_id=@me"),
+    parameters: {"id": id, "me": me},
+  );
+  return ok({"deleted": true});
 }
 
 Future<Response> _createConversation(Request r) async {

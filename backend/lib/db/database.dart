@@ -218,6 +218,21 @@ Future<void> _runMigrations() async {
     )
   """);
   await _db!.execute("ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'member'");
+  await _db!.execute("ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE");
+
+  // ─── STICKERS (custom user stickers) ─────────────────────
+  await _db!.execute("""
+    CREATE TABLE IF NOT EXISTS stickers (
+      id UUID PRIMARY KEY,
+      owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      mime_type TEXT,
+      is_favorite BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  """);
+  await _db!.execute("CREATE INDEX IF NOT EXISTS stickers_owner_idx ON stickers(owner_id, is_favorite DESC, created_at DESC)");
 
   // ─── CHAT MESSAGES (renamed from "messages") ─────────────
   await _db!.execute("""

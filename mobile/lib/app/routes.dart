@@ -114,6 +114,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               conversationId: s.pathParameters['id']!,
               otherUserName: s.uri.queryParameters['name'] ?? 'Chat',
               otherUserAvatar: s.uri.queryParameters['avatar'],
+              otherUserId: s.uri.queryParameters['userId'],
             ),
           ),
           GoRoute(
