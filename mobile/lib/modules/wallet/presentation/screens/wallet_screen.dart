@@ -26,7 +26,7 @@ import 'package:flutter/material.dart';
                     borderRadius: BorderRadius.circular(MyloRadius.xl),
                     boxShadow: [
                       BoxShadow(
-                        color: MyloColors.primary.withOpacity(0.3),
+                        color: MyloColors.primary.withAlpha(77),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -58,7 +58,7 @@ import 'package:flutter/material.dart';
                   padding: const EdgeInsets.symmetric(
                       horizontal: MyloSpacing.lg, vertical: MyloSpacing.sm),
                   decoration: BoxDecoration(
-                    color: MyloColors.primary.withOpacity(0.12),
+                    color: MyloColors.primary.withAlpha(31),
                     borderRadius: BorderRadius.circular(MyloRadius.full),
                   ),
                   child: Row(
