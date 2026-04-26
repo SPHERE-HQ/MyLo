@@ -1,146 +1,119 @@
 # Mylo — Super App by Sphere
 
-  > *"Everything in your Sphere"*
+> *"Everything in your Sphere"*
 
-  Mylo adalah super app all-in-one berbasis **Flutter + Dart** — chat, feed sosial, email, komunitas, e-wallet, notifikasi, dan storage dalam satu aplikasi.
+Mylo adalah super app all-in-one berbasis **Flutter + Dart** — chat, feed sosial, email, komunitas, e-wallet, notifikasi, dan storage dalam satu aplikasi.
 
-  ---
+---
 
-  ## Tech Stack
+## Tech Stack
 
-  | Layer | Teknologi |
-  |-------|-----------|
-  | **Mobile App** | Flutter + Dart |
-  | **State Management** | Riverpod |
-  | **Navigation** | GoRouter |
-  | **HTTP Client** | Dio |
-  | **Backend** | Dart Frog |
-  | **Database** | PostgreSQL |
-  | **Auth** | JWT (dart_jsonwebtoken + bcrypt) |
-  | **Hosting** | Railway |
-  | **CI/CD** | GitHub Actions — Build APK otomatis |
+| Layer | Teknologi |
+|-------|-----------|
+| **Mobile App** | Flutter + Dart |
+| **State Management** | Riverpod |
+| **Navigation** | GoRouter |
+| **HTTP Client** | Dio |
+| **Backend** | Dart Frog |
+| **Database** | PostgreSQL |
+| **CI/CD** | GitHub Actions — Build APK otomatis |
 
-  ---
+---
 
-  ## Struktur Repo
+## Struktur Repo
 
-  ```
-  MyLo/
-  ├── .github/
-  │   └── workflows/
-  │       └── build-apk.yml       # Build APK otomatis setiap push ke main
-  │
-  ├── mobile/                     # Flutter App
-  │   ├── lib/
-  │   │   ├── main.dart
-  │   │   ├── app/
-  │   │   │   ├── app.dart        # Root widget
-  │   │   │   ├── routes.dart     # GoRouter — semua navigasi
-  │   │   │   └── theme.dart      # Design system (warna, spacing, radius)
-  │   │   ├── core/
-  │   │   │   ├── api/            # Dio HTTP client
-  │   │   │   └── auth/           # Auth provider + token manager
-  │   │   ├── modules/
-  │   │   │   ├── auth/           # Login, Register, Splash, Onboarding
-  │   │   │   ├── chat/           # Chat list + Chat room + WebSocket
-  │   │   │   ├── feed/           # Feed, Explore, Stories, Reel
-  │   │   │   ├── email/          # Inbox, Detail, Compose
-  │   │   │   ├── community/      # Server list + Channel + Messages
-  │   │   │   └── wallet/         # Saldo, Top up, Transfer
-  │   │   └── shared/
-  │   │       ├── screens/        # Home shell + Bottom nav
-  │   │       └── widgets/        # MButton, MAvatar, MLoadingSkeleton, dll
-  │   └── pubspec.yaml
-  │
-  └── backend/                    # Dart Frog Backend
-      ├── routes/
-      │   ├── index.dart
-      │   ├── health.dart
-      │   ├── auth/               # register, login, me
-      │   ├── chat/               # conversations, messages
-      │   ├── feed/               # posts, stories, likes, comments
-      │   ├── wallet/             # balance, topup, transfer
-      │   ├── notifications/
-      │   └── users/              # search, profile
-      ├── lib/
-      │   ├── db/
-      │   │   ├── database.dart   # PostgreSQL connection
-      │   │   └── schema.sql      # DDL — jalankan sekali untuk init DB
-      │   ├── middleware/
-      │   │   └── auth_middleware.dart  # JWT verification
-      │   └── helpers/
-      │       ├── jwt_helper.dart
-      │       └── response_helper.dart
-      └── pubspec.yaml
-  ```
+```
+MyLo/
+├── .github/
+│   └── workflows/
+│       └── build-apk.yml       # Build APK otomatis setiap push ke main
+│
+├── mobile/                     # Flutter App
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── app/                # Root widget, routing, design system
+│   │   ├── core/               # API client + auth provider
+│   │   ├── modules/            # Auth, Chat, Feed, Email, Community, Wallet
+│   │   └── shared/             # Home shell + widget reusable
+│   └── pubspec.yaml
+│
+└── backend/                    # Dart Frog Backend
+    ├── routes/                 # Auth, Chat, Feed, Wallet, Notifications, Users
+    ├── lib/                    # DB, middleware, helpers
+    └── pubspec.yaml
+```
 
-  ---
+---
 
-  ## Download APK
+## Download APK
 
-  Setiap push ke branch `main` akan otomatis membangun APK baru via GitHub Actions.
+Setiap push ke branch `main` otomatis membangun APK baru via GitHub Actions.
 
-  ➡️ **[Lihat semua release APK](https://github.com/SPHERE-HQ/MyLo/releases)**
+➡️ **Lihat semua release APK di tab [Releases](../../releases)**
 
-  Atau download dari tab **Actions → Build Mylo APK → Artifacts**
+Atau download dari tab **Actions → Build Mylo APK → Artifacts**
 
-  ---
+### Cara install di HP
 
-  ## Setup Backend di Railway
+1. **Kalau pernah install Mylo build lama, uninstall dulu** dari HP. Build baru pakai signature konsisten — sekali install build ini, update berikutnya bisa langsung tanpa uninstall lagi.
+2. Download APK sesuai HP Anda. Kalau ragu, pakai **`app-release.apk`** (universal, pasti jalan di semua HP).
+3. Buka **Pengaturan → Keamanan → Instal aplikasi tidak dikenal** → aktifkan untuk browser/file manager Anda.
+4. Buka file APK → **Install**.
 
-  ### 1. Environment Variables
+| File | Untuk Perangkat |
+|------|----------------|
+| `app-release.apk` | Universal — pasti jalan di HP apa pun (paling aman) |
+| `app-arm64-v8a-release.apk` | HP modern 2019+ (ukuran lebih kecil) |
+| `app-armeabi-v7a-release.apk` | HP lama / 32-bit |
+| `app-x86_64-release.apk` | Emulator / Chromebook |
 
-  ```
-  DATABASE_URL  = postgresql://...railway...
-  JWT_SECRET    = <string acak panjang, min 64 karakter>
-  PORT          = 8080
-  ```
+---
 
-  ### 2. Build Command
+## Development
 
-  ```bash
-  dart pub get
-  ```
+### Mobile
 
-  ### 3. Start Command
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
 
-  ```bash
-  dart run bin/server.dart
-  ```
+### Backend
 
-  ### 4. Init Database (sekali saja)
+```bash
+cd backend
+dart pub get
+dart_frog dev
+```
 
-  Jalankan isi file `backend/lib/db/schema.sql` di Railway PostgreSQL console.
+Konfigurasi environment di-handle via env file lokal (lihat tim untuk detail). **Jangan commit file env atau credential apa pun ke repo.**
 
-  ---
+### Test
 
-  ## API Endpoints
+```bash
+cd mobile
+flutter test
+```
 
-  ```
-  POST  /auth/register        Daftar akun
-  POST  /auth/login           Login → JWT token
-  GET   /auth/me              Profil aktif
-  PUT   /auth/me              Update profil
+Test juga otomatis dijalankan di CI sebelum build APK — kalau test gagal, build dibatalkan dan laporan test diunggah sebagai artifact di GitHub Actions.
 
-  GET   /chat/conversations   List percakapan
-  POST  /chat/conversations   Buat percakapan
-  GET   /chat/conversations/:id/messages  Ambil pesan
-  POST  /chat/conversations/:id/messages  Kirim pesan
+---
 
-  GET   /feed/posts           Timeline
-  POST  /feed/posts           Buat post
-  POST  /feed/posts/:id/like  Like/unlike
+## API Endpoints (high level)
 
-  GET   /wallet               Info saldo
-  POST  /wallet/topup         Top up
-  POST  /wallet/transfer      Transfer ke user lain
+```
+Auth          register, login, profil
+Chat          conversations, messages
+Feed          posts, stories, likes, comments
+Wallet        balance, top up, transfer
+Notifications inbox notifikasi
+Users         search & profile
+Health        health check
+```
 
-  GET   /notifications        Semua notifikasi
-  GET   /users/search?q=      Cari user
-  GET   /health               Health check
-  ```
+Detail endpoint, schema request/response, dan auth flow ada di dokumentasi internal tim — bukan di repo publik.
 
-  ---
+---
 
-  **Sphere HQ** — Mylo App | Flutter + Dart | 2025
-  
+**Sphere HQ** — Mylo App | Flutter + Dart | 2025
