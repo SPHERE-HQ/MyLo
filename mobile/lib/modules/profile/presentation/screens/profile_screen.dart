@@ -81,7 +81,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: MyloColors.textTertiary.withOpacity(0.5),
+                color: MyloColors.textTertiary.withAlpha(128),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
