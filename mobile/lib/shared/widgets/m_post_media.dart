@@ -111,7 +111,7 @@ class _MPostMediaState extends State<MPostMedia> {
                       shape: BoxShape.circle,
                       color: i == _current
                           ? Colors.white
-                          : Colors.white.withOpacity(0.5),
+                          : Colors.white.withAlpha(128),
                     ),
                   ),
                 ),
