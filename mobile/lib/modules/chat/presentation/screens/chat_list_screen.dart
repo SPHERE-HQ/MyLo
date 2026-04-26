@@ -10,14 +10,15 @@ import '../../../../shared/widgets/m_loading_skeleton.dart';
 import '../../../../shared/widgets/m_snackbar.dart';
 import '../../../../shared/widgets/m_text_field.dart';
 
-final conversationsProvider = FutureProvider.autoDispose((ref) async {
+// Non-autoDispose: tetap hidup saat pindah tab sehingga tidak blank
+final conversationsProvider = FutureProvider<List>((ref) async {
   final dio = ref.read(dioProvider);
   final res = await dio.get('/chat/conversations');
   return res.data as List;
 });
 
 final _userSearchProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
+    FutureProvider.family<List<Map<String, dynamic>>, String>(
         (ref, q) async {
   if (q.trim().isEmpty) return [];
   final res = await ref.read(dioProvider).get('/users', queryParameters: {'q': q});
@@ -30,11 +31,15 @@ class ChatListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+class _ChatListScreenState extends ConsumerState<ChatListScreen>
+    with AutomaticKeepAliveClientMixin {
   bool _showSearch = false;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
   bool _startingChat = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void dispose() {
@@ -50,285 +55,168 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         'type': 'private',
         'memberIds': [user['id']],
       });
-      final id = (res.data as Map)['id'] as String?;
-      if (mounted && id != null) {
-        setState(() { _showSearch = false; _searchQuery = ''; _searchCtrl.clear(); });
+      final id = res.data['id'].toString();
+      if (mounted) {
+        setState(() => _showSearch = false);
         ref.invalidate(conversationsProvider);
-        final name = (user['displayName'] ?? user['username'] ?? 'Chat').toString();
-        context.push('/home/chat/$id?name=${Uri.encodeComponent(name)}&avatar=${user['avatarUrl'] ?? ''}');
-      } else if (mounted) {
-        MSnackbar.error(context, 'Gagal membuka chat: respons tidak valid');
+        context.push('/home/chat/$id', extra: user['displayName'] ?? user['username']);
       }
     } catch (e) {
-      if (mounted) MSnackbar.error(context, 'Gagal: $e');
+      if (mounted) MSnackbar.error(context, 'Gagal memulai chat: $e');
     } finally {
       if (mounted) setState(() => _startingChat = false);
     }
   }
 
-  String _convDisplayName(Map<String, dynamic> c, String myId) {
-    if (c['type'] == 'private') {
-      final members = (c['members'] as List?) ?? const [];
-      for (final m in members) {
-        if (m is Map && m['id'] != myId) {
-          return (m['displayName'] ?? m['username'] ?? 'Chat').toString();
-        }
-      }
-    }
-    return (c['name'] ?? 'Percakapan').toString();
-  }
-
-  String? _convAvatarUrl(Map<String, dynamic> c, String myId) {
-    if (c['type'] == 'private') {
-      final members = (c['members'] as List?) ?? const [];
-      for (final m in members) {
-        if (m is Map && m['id'] != myId) {
-          return m['avatarUrl'] as String?;
-        }
-      }
-    }
-    return c['avatarUrl'] as String?;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final convs = ref.watch(conversationsProvider);
+    super.build(context);
+    final convAsync = ref.watch(conversationsProvider);
+    final meAsync = ref.watch(currentUserProvider);
+    final myId = meAsync.valueOrNull?['id']?.toString() ?? '';
+
     return Scaffold(
       appBar: AppBar(
         title: _showSearch
             ? MTextField.search(
                 controller: _searchCtrl,
-                hint: 'Cari pengguna...',
-                autofocus: true,
+                hintText: 'Cari pengguna...',
                 onChanged: (v) => setState(() => _searchQuery = v),
               )
-            : const Text('Mylo',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+            : const Text('Mylo'),
         actions: [
+          IconButton(
+            icon: Icon(_showSearch ? Icons.close : Icons.search),
+            onPressed: () => setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch) {
+                _searchCtrl.clear();
+                _searchQuery = '';
+              }
+            }),
+          ),
           if (!_showSearch)
             IconButton(
               icon: const Icon(Icons.edit_outlined),
-              onPressed: () => setState(() { _showSearch = true; }),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => setState(() {
-                _showSearch = false;
-                _searchQuery = '';
-                _searchCtrl.clear();
-              }),
+              onPressed: () => context.push('/home/chat/create-group'),
+              tooltip: 'Grup baru',
             ),
         ],
       ),
-      body: _showSearch && _searchQuery.isNotEmpty
-          ? _buildUserSearch()
-          : _showSearch && _searchQuery.isEmpty
-              ? const Center(
+      body: _showSearch
+          ? _buildSearch(myId)
+          : RefreshIndicator(
+              onRefresh: () async => ref.invalidate(conversationsProvider),
+              child: convAsync.when(
+                loading: () => const MLoadingSkeleton(),
+                error: (e, _) => Center(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.search, size: 48, color: MyloColors.textTertiary),
-                    SizedBox(height: 12),
-                    Text('Ketik nama atau username',
-                        style: TextStyle(color: MyloColors.textSecondary)),
+                    const Icon(Icons.error_outline, size: 40),
+                    const SizedBox(height: 8),
+                    Text('Gagal memuat: $e'),
+                    const SizedBox(height: 8),
+                    TextButton(
+                        onPressed: () => ref.invalidate(conversationsProvider),
+                        child: const Text('Coba lagi')),
                   ]),
-                )
-              : Column(
-                  children: [
-                    _MyloAITile(onTap: () => context.push('/home/ai')),
-                    const Divider(height: 1),
-                    Expanded(child: _buildConversationList(convs)),
-                  ],
                 ),
-      floatingActionButton: _showSearch
-          ? FloatingActionButton.extended(
-              backgroundColor: MyloColors.primary,
-              onPressed: () => context.push('/home/chat/create-group'),
-              icon: const Icon(Icons.group_add, color: Colors.white),
-              label: const Text('Grup Baru',
-                  style: TextStyle(color: Colors.white)),
-            )
-          : FloatingActionButton(
-              onPressed: () => setState(() => _showSearch = true),
-              backgroundColor: MyloColors.primary,
-              child: const Icon(Icons.edit, color: Colors.white),
-            ),
-    );
-  }
-
-  Widget _buildUserSearch() {
-    final users = ref.watch(_userSearchProvider(_searchQuery));
-    return users.when(
-      loading: () => ListView.builder(
-        itemCount: 5,
-        itemBuilder: (_, __) => const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(children: [
-            MLoadingSkeleton(width: 48, height: 48, borderRadius: 24),
-            SizedBox(width: 12),
-            Expanded(child: MLoadingSkeleton(height: 14)),
-          ]),
-        ),
-      ),
-      error: (e, _) => Center(child: Text('$e')),
-      data: (list) => list.isEmpty
-          ? const MEmptyState(
-              icon: Icons.person_search,
-              title: 'Pengguna tidak ditemukan',
-              subtitle: 'Coba nama atau username lain')
-          : ListView.builder(
-              itemCount: list.length,
-              itemBuilder: (_, i) {
-                final u = list[i];
-                final name = (u['displayName'] ?? u['username'] ?? '?').toString();
-                return ListTile(
-                  leading: MAvatar(
-                      name: name,
-                      url: u['avatarUrl'] as String?,
-                      size: MAvatarSize.md),
-                  title: Text(name,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text('@${u['username'] ?? ''}',
-                      style: const TextStyle(
-                          color: MyloColors.textTertiary, fontSize: 12)),
-                  onTap: () => _startDirectChat(u),
-                );
-              },
-            ),
-    );
-  }
-
-  Widget _buildConversationList(AsyncValue<dynamic> convs) {
-    final myId = ref.watch(authStateProvider).valueOrNull?.id ?? '';
-    return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(conversationsProvider),
-      child: convs.when(
-        loading: () => ListView.builder(
-          itemCount: 8,
-          itemBuilder: (_, __) => const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(children: [
-              MLoadingSkeleton(width: 48, height: 48, borderRadius: 24),
-              SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                MLoadingSkeleton(width: 120, height: 14),
-                SizedBox(height: 6),
-                MLoadingSkeleton(height: 12),
-              ])),
-            ]),
-          ),
-        ),
-        error: (e, _) => Center(child: Text('$e')),
-        data: (list) => list.isEmpty
-            ? const MEmptyState(
-                icon: Icons.chat_bubble_outline,
-                title: 'Belum ada percakapan',
-                subtitle: 'Tap tombol edit untuk mulai chat')
-            : ListView.separated(
-                itemCount: list.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 76),
-                itemBuilder: (_, i) {
-                  final c = list[i] as Map<String, dynamic>;
-                  final lastMsg =
-                      c['lastMessage'] as Map<String, dynamic>?;
-                  final unread =
-                      (c['unreadCount'] as num?)?.toInt() ?? 0;
-                  final dispName = _convDisplayName(c, myId);
-                  final dispAvatar = _convAvatarUrl(c, myId);
-                  return ListTile(
-                    leading: MAvatar(
-                        name: dispName,
-                        url: dispAvatar,
-                        size: MAvatarSize.md),
-                    title: Text(
-                      dispName,
-                      style: TextStyle(
-                        fontWeight: unread > 0
-                            ? FontWeight.bold
-                            : FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      lastMsg?['content'] ?? 'Belum ada pesan',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: unread > 0
-                            ? null
-                            : MyloColors.textSecondary,
-                        fontWeight: unread > 0
-                            ? FontWeight.w500
-                            : FontWeight.normal,
-                      ),
-                    ),
-                    trailing: unread > 0
-                        ? Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: MyloColors.primary,
-                              shape: BoxShape.circle,
+                data: (convs) {
+                  if (convs.isEmpty) {
+                    return const MEmptyState(
+                        icon: Icons.chat_bubble_outline,
+                        title: 'Belum ada percakapan',
+                        subtitle: 'Mulai chat dengan menekan ikon cari di atas');
+                  }
+                  // Mylo AI entry always at top
+                  return ListView.builder(
+                    padding: const EdgeInsets.only(top: 4),
+                    itemCount: convs.length + 1,
+                    itemBuilder: (_, i) {
+                      if (i == 0) {
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: MyloColors.primary,
+                            child: const Icon(Icons.auto_awesome, color: Colors.white),
+                          ),
+                          title: const Text('Mylo AI', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('Asisten pintar — tanya apa saja'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: MyloColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text('$unread',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
-                          )
-                        : null,
-                    onTap: () {
-                      context.push(
-                          '/home/chat/${c['id']}?name=${Uri.encodeComponent(dispName)}&avatar=${dispAvatar ?? ''}');
+                            child: const Text('AI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: MyloColors.primary)),
+                          ),
+                          onTap: () => context.push('/home/ai'),
+                        );
+                      }
+                      final c = convs[i - 1] as Map<String, dynamic>;
+                      final isGroup = c['type'] == 'group';
+                      String name = c['name']?.toString() ?? '';
+                      if (!isGroup && name.isEmpty) {
+                        final members = (c['members'] as List?) ?? [];
+                        final other = members.firstWhere(
+                            (m) => m['userId'] != myId,
+                            orElse: () => members.isNotEmpty ? members.first : {});
+                        name = other['displayName']?.toString() ??
+                            other['username']?.toString() ?? 'Percakapan';
+                      }
+                      return ListTile(
+                        leading: MAvatar(name: name, size: MAvatarSize.md),
+                        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(c['lastMessage']?.toString() ?? 'Belum ada pesan',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: isGroup
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: MyloColors.secondary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text('Grup', style: TextStyle(fontSize: 11)))
+                            : null,
+                        onTap: () => context.push('/home/chat/${c['id']}', extra: name),
+                      );
                     },
                   );
                 },
               ),
-      ),
+            ),
     );
   }
-}
 
-class _MyloAITile extends StatelessWidget {
-  final VoidCallback onTap;
-  const _MyloAITile({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [MyloColors.primary, MyloColors.secondary],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
-      ),
-      title: const Text('Mylo AI',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-      subtitle: const Text('Asisten pintar — tanya apa saja',
-          style: TextStyle(
-              color: MyloColors.textSecondary, fontSize: 12)),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: MyloColors.primary.withAlpha(31),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Text('AI',
-            style: TextStyle(
-                color: MyloColors.primary,
-                fontSize: 10,
-                fontWeight: FontWeight.w700)),
-      ),
+  Widget _buildSearch(String myId) {
+    if (_searchQuery.trim().isEmpty) {
+      return const Center(child: Text('Ketik nama atau username untuk mencari'));
+    }
+    final results = ref.watch(_userSearchProvider(_searchQuery));
+    return results.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (users) {
+        final filtered = users.where((u) => u['id']?.toString() != myId).toList();
+        if (filtered.isEmpty) {
+          return const MEmptyState(icon: Icons.person_search, title: 'Tidak ditemukan');
+        }
+        return ListView.builder(
+          itemCount: filtered.length,
+          itemBuilder: (_, i) {
+            final u = filtered[i];
+            final name = u['displayName']?.toString() ?? u['username']?.toString() ?? '';
+            return ListTile(
+              leading: MAvatar(name: name, url: u['avatarUrl'] as String?),
+              title: Text(name),
+              subtitle: Text('@${u['username'] ?? ''}'),
+              trailing: _startingChat
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.chat_bubble_outline),
+              onTap: () => _startDirectChat(u),
+            );
+          },
+        );
+      },
     );
   }
 }
