@@ -117,7 +117,7 @@ class NotificationsScreen extends ConsumerWidget {
                   },
                   child: MCard(
                     margin: const EdgeInsets.only(bottom: 8),
-                    color: isRead ? null : MyloColors.primary.withOpacity(.05),
+                    color: isRead ? null : MyloColors.primary.withAlpha(13),
                     onTap: () async {
                       if (!isRead) {
                         await ref.read(dioProvider).post('/notifications/${n['id']}/read');
@@ -128,7 +128,7 @@ class NotificationsScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: MyloColors.primary.withOpacity(.12),
+                          color: MyloColors.primary.withAlpha(31),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(_iconFor(n['type']?.toString()), color: MyloColors.primary, size: 20),
