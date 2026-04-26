@@ -89,11 +89,11 @@ class _ServerInviteScreenState extends ConsumerState<ServerInviteScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 16),
                       decoration: BoxDecoration(
-                        color: MyloColors.primary.withOpacity(0.1),
+                        color: MyloColors.primary.withAlpha(26),
                         borderRadius:
                             BorderRadius.circular(MyloRadius.md),
                         border: Border.all(
-                            color: MyloColors.primary.withOpacity(0.3)),
+                            color: MyloColors.primary.withAlpha(77)),
                       ),
                       child: Row(
                           mainAxisSize: MainAxisSize.min,
