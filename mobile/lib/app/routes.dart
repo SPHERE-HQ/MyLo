@@ -17,6 +17,7 @@ import '../modules/chat/presentation/screens/chat_list_screen.dart';
 import '../modules/chat/presentation/screens/chat_room_screen.dart';
 import '../modules/chat/presentation/screens/create_group_screen.dart';
 import '../modules/chat/presentation/screens/group_settings_screen.dart';
+import '../modules/chat/presentation/screens/voice_call_screen.dart';
 import '../modules/community/presentation/screens/channel_screen.dart';
 import '../modules/community/presentation/screens/community_list_screen.dart';
 import '../modules/community/presentation/screens/server_create_screen.dart';
@@ -118,6 +119,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/home/chat/:id/settings',
             builder: (_, s) => GroupSettingsScreen(conversationId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/home/chat/:id/voice',
+            builder: (_, s) => VoiceCallScreen(
+              conversationId: s.pathParameters['id']!,
+              otherName: s.uri.queryParameters['name'] ?? 'Panggilan',
+              video: s.uri.queryParameters['video'] == '1',
+            ),
           ),
           // ─── Feed ─────────────────────────────────────────────────
           GoRoute(path: '/home/feed', builder: (_, __) => const FeedScreen()),
