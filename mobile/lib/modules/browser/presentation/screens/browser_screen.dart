@@ -43,15 +43,11 @@ class BrowserScreen extends ConsumerStatefulWidget {
   ConsumerState<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-class _BrowserScreenState extends ConsumerState<BrowserScreen>
-    with AutomaticKeepAliveClientMixin {
+class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   final List<_BrowserTab> _tabs = [];
   int _active = 0;
   final _urlCtrl = TextEditingController();
   bool _initialized = false;
-
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -211,7 +207,6 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     if (_tabs.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final tab = _tabs[_active];
     return Scaffold(
