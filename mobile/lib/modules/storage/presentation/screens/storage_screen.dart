@@ -105,7 +105,7 @@ class StorageScreen extends ConsumerWidget {
                               child: CachedNetworkImage(imageUrl: f['url'], fit: BoxFit.cover))
                           : Container(
                               decoration: BoxDecoration(
-                                color: MyloColors.primary.withOpacity(.1),
+                                color: MyloColors.primary.withAlpha(26),
                                 borderRadius: BorderRadius.circular(MyloRadius.sm),
                               ),
                               child: const Icon(Icons.insert_drive_file_outlined,
