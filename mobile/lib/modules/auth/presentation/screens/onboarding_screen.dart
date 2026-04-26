@@ -107,7 +107,7 @@ class _OnboardingPage extends StatelessWidget {
         children: [
           Container(
             width: 120, height: 120,
-            decoration: BoxDecoration(color: MyloColors.primary.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: MyloColors.primary.withAlpha(26), shape: BoxShape.circle),
             child: Icon(icon, size: 60, color: MyloColors.primary),
           ),
           const SizedBox(height: 40),
