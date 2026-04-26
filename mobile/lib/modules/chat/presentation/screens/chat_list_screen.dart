@@ -320,7 +320,7 @@ class _MyloAITile extends StatelessWidget {
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: MyloColors.primary.withOpacity(0.12),
+          color: MyloColors.primary.withAlpha(31),
           borderRadius: BorderRadius.circular(10),
         ),
         child: const Text('AI',
