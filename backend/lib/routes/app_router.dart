@@ -717,7 +717,7 @@ Future<Response> _sendMessage(Request r, String id) async {
                    VALUES (@id, @c, @s, @t, @co, @m, @r)"""),
       parameters: {
         "id": mid, "c": id, "s": me,
-        "t": body["type"] ?? "text", "co": body["content"],
+        "t": body["type"] ?? "text", "co": body["content"] ?? "",
         "m": body["mediaUrl"], "r": body["replyToId"],
       },
     );
