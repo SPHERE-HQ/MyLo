@@ -352,7 +352,7 @@ class RecordingPanel extends StatelessWidget {
             IconButton(
               onPressed: onCancel,
               icon: const Icon(Icons.delete_outline,
-                  color: MyloColors.error),
+                  color: const Color(0xFFE53935)),
               tooltip: 'Batal',
             ),
             Container(
@@ -360,7 +360,7 @@ class RecordingPanel extends StatelessWidget {
               height: 10,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: MyloColors.error,
+                color: const Color(0xFFE53935),
               ),
             ),
             const SizedBox(width: 8),
@@ -405,12 +405,12 @@ class RecordingPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: state.willCancel
-            ? MyloColors.error.withAlpha(20)
+            ? const Color(0xFFE53935).withAlpha(20)
             : Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: state.willCancel
-              ? MyloColors.error
+              ? const Color(0xFFE53935)
               : MyloColors.primary.withAlpha(80),
         ),
       ),
@@ -421,7 +421,7 @@ class RecordingPanel extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             child: Icon(
               state.willCancel ? Icons.delete : Icons.mic,
-              color: state.willCancel ? MyloColors.error : MyloColors.primary,
+              color: state.willCancel ? const Color(0xFFE53935) : MyloColors.primary,
             ),
           ),
           const SizedBox(width: 10),
@@ -447,7 +447,7 @@ class RecordingPanel extends StatelessWidget {
                           : 'Geser ← batal  •  ↑ kunci'),
                   style: TextStyle(
                     color: state.willCancel
-                        ? MyloColors.error
+                        ? const Color(0xFFE53935)
                         : MyloColors.textSecondary,
                     fontSize: 12,
                     fontWeight: state.willCancel || state.willLock
