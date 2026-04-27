@@ -24,6 +24,7 @@ import '../modules/community/presentation/screens/server_create_screen.dart';
 import '../modules/community/presentation/screens/server_invite_screen.dart';
 import '../modules/community/presentation/screens/server_members_screen.dart';
 import '../modules/community/presentation/screens/server_settings_screen.dart';
+import '../modules/community/presentation/screens/server_overview_screen.dart';
 import '../modules/email/presentation/screens/email_compose_screen.dart';
 import '../modules/email/presentation/screens/email_detail_screen.dart';
 import '../modules/email/presentation/screens/email_list_screen.dart';
@@ -172,11 +173,27 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/home/community', builder: (_, __) => const CommunityListScreen()),
           GoRoute(path: '/home/community/create', builder: (_, __) => const ServerCreateScreen()),
           GoRoute(
+            path: '/home/community/:serverId/overview',
+            builder: (_, s) => ServerOverviewScreen(
+              serverId: s.pathParameters['serverId']!,
+            ),
+          ),
+          GoRoute(
             path: '/home/community/:serverId/channel/:channelId',
             builder: (_, s) => ChannelScreen(
               serverId: s.pathParameters['serverId']!,
               channelId: s.pathParameters['channelId']!,
             ),
+          ),
+          GoRoute(
+            path: '/home/community/:serverId/voice/:channelId',
+            builder: (_, s) {
+              final extra = s.extra as Map<String, dynamic>?;
+              return VoiceCallScreen(
+                conversationId: s.pathParameters['channelId']!,
+                otherName: extra?['name']?.toString() ?? 'Voice Room',
+              );
+            },
           ),
           GoRoute(
             path: '/home/community/:serverId/members',
