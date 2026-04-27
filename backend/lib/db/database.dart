@@ -254,6 +254,9 @@ Future<void> _runMigrations() async {
   await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL");
   await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE");
   await _db!.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS read_by JSONB DEFAULT '[]'");
+  // Pesan stiker / media murni tidak punya teks → kolom content harus boleh NULL.
+  // Drop legacy NOT NULL kalau pernah diset dari skema lama `messages`.
+  await _db!.execute("ALTER TABLE chat_messages ALTER COLUMN content DROP NOT NULL");
 
   // Backwards-compat views: a few legacy queries still reference the old
   // names. Expose them as updatable views over the renamed tables.
