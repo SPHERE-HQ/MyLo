@@ -18,6 +18,8 @@ import '../modules/chat/presentation/screens/chat_room_screen.dart';
 import '../modules/chat/presentation/screens/create_group_screen.dart';
 import '../modules/chat/presentation/screens/group_settings_screen.dart';
 import '../modules/chat/presentation/screens/voice_call_screen.dart';
+import '../modules/chat/presentation/screens/forward_picker_screen.dart';
+import '../modules/chat/presentation/screens/starred_messages_screen.dart';
 import '../modules/community/presentation/screens/channel_screen.dart';
 import '../modules/community/presentation/screens/community_list_screen.dart';
 import '../modules/community/presentation/screens/server_create_screen.dart';
@@ -128,6 +130,20 @@ final routerProvider = Provider<GoRouter>((ref) {
               conversationId: s.pathParameters['id']!,
               otherName: s.uri.queryParameters['name'] ?? 'Panggilan',
               video: s.uri.queryParameters['video'] == '1',
+              mode: CallMode.direct,
+            ),
+          ),
+          GoRoute(
+            path: '/home/chat/:id/forward',
+            builder: (_, s) => ForwardPickerScreen(
+              fromConversationId: s.pathParameters['id']!,
+              payload: s.extra as Map<String, dynamic>? ?? const {},
+            ),
+          ),
+          GoRoute(
+            path: '/home/chat/:id/starred',
+            builder: (_, s) => StarredMessagesScreen(
+              conversationId: s.pathParameters['id']!,
             ),
           ),
           // ─── Feed ─────────────────────────────────────────────────
@@ -192,6 +208,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               return VoiceCallScreen(
                 conversationId: s.pathParameters['channelId']!,
                 otherName: extra?['name']?.toString() ?? 'Voice Room',
+                mode: CallMode.room,
               );
             },
           ),

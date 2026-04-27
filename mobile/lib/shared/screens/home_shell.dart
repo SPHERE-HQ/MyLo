@@ -2,17 +2,53 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/m_side_drawer.dart';
+import '../widgets/m_floating_nav_bubble.dart';
 
-/// Map between bottom-nav indices and their root path. Order matters: index 0
-/// is also the "home tab" we fall back to before exiting the app.
-const _tabPaths = <String>[
+/// Mapping antara root path tab dan label/ikonnya.
+/// Index 0 ('/home/chat') juga jadi tab "home" yang dipakai untuk
+/// fallback sebelum exit aplikasi.
+const _navItems = <NavBubbleItem>[
+  NavBubbleItem(icon: Icons.chat_bubble, label: 'Chat', path: '/home/chat'),
+  NavBubbleItem(icon: Icons.groups, label: 'Komunitas', path: '/home/community'),
+  NavBubbleItem(icon: Icons.grid_view, label: 'Feed', path: '/home/feed'),
+  NavBubbleItem(icon: Icons.public, label: 'Browser', path: '/home/browser'),
+  NavBubbleItem(icon: Icons.account_balance_wallet, label: 'Wallet', path: '/home/wallet'),
+  NavBubbleItem(icon: Icons.email_outlined, label: 'Email', path: '/home/email'),
+  NavBubbleItem(icon: Icons.cloud_outlined, label: 'Penyimpanan', path: '/home/storage'),
+  NavBubbleItem(icon: Icons.auto_awesome, label: 'Mylo AI', path: '/home/ai'),
+  NavBubbleItem(icon: Icons.notifications_outlined, label: 'Notifikasi', path: '/home/notifications'),
+  NavBubbleItem(icon: Icons.person, label: 'Profil', path: '/home/profile'),
+  NavBubbleItem(icon: Icons.settings_outlined, label: 'Pengaturan', path: '/home/settings'),
+];
+
+/// Path-path tempat bubble navigasi disembunyikan agar tidak menutup UI
+/// (misal saat sedang dalam panggilan suara/video atau sedang chat).
+bool _shouldHideBubble(String location) {
+  // Sembunyikan di halaman panggilan dan voice room.
+  if (location.contains('/voice')) return true;
+  // Sembunyikan di chat room individual (tetap muncul di list).
+  if (RegExp(r'^/home/chat/[^/]+$').hasMatch(location)) return true;
+  if (RegExp(r'^/home/chat/[^/]+/').hasMatch(location)) return true;
+  // Sembunyikan di channel komunitas.
+  if (RegExp(r'^/home/community/[^/]+/channel/').hasMatch(location)) return true;
+  // Sembunyikan di story viewer.
+  if (location.startsWith('/home/feed/story')) return true;
+  return false;
+}
+
+const _tabRootPaths = <String>{
   '/home/chat',
   '/home/community',
   '/home/feed',
   '/home/browser',
   '/home/wallet',
   '/home/profile',
-];
+  '/home/email',
+  '/home/storage',
+  '/home/ai',
+  '/home/notifications',
+  '/home/settings',
+};
 
 class HomeShell extends StatefulWidget {
   final Widget child;
@@ -25,35 +61,25 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   DateTime? _lastBackPress;
 
-  int _selectedIndex(BuildContext context) {
-    final loc = GoRouterState.of(context).uri.toString();
-    for (var i = 0; i < _tabPaths.length; i++) {
-      if (loc.startsWith(_tabPaths[i])) return i;
-    }
-    return 0;
-  }
+  String _currentLocation(BuildContext context) =>
+      GoRouterState.of(context).uri.toString();
 
   bool _isAtTabRoot(BuildContext context) {
     final loc = GoRouterState.of(context).uri.path;
-    return _tabPaths.contains(loc);
+    return _tabRootPaths.contains(loc);
   }
 
   Future<void> _handlePop(BuildContext context) async {
     final router = GoRouter.of(context);
-    // 1. If we are on a nested page within a tab (e.g. /home/profile/edit),
-    //    pop back to the tab root.
     if (router.canPop()) {
       router.pop();
       return;
     }
-    // 2. If we are on a tab other than the home tab, switch back to the
-    //    home tab instead of exiting.
-    if (!_isAtTabRoot(context) || _selectedIndex(context) != 0) {
-      context.go(_tabPaths.first);
+    if (!_isAtTabRoot(context) ||
+        GoRouterState.of(context).uri.path != '/home/chat') {
+      context.go('/home/chat');
       return;
     }
-    // 3. On the home tab: require a second back-press within 2 seconds to
-    //    exit, so a stray tap doesn't kick the user out.
     final now = DateTime.now();
     if (_lastBackPress == null ||
         now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
@@ -69,43 +95,29 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final idx = _selectedIndex(context);
+    final loc = _currentLocation(context);
+    final hideBubble = _shouldHideBubble(loc);
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return PopScope(
-      // Always intercept the system back gesture so we can decide what to do.
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         _handlePop(context);
       },
       child: Scaffold(
+        // Drawer tetap ada — bisa dibuka dengan geser dari tepi kiri.
         drawer: const MSideDrawer(),
-        body: widget.child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: idx,
-          onDestinationSelected: (i) {
-            if (i >= 0 && i < _tabPaths.length) {
-              context.go(_tabPaths[i]);
-            }
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline),
-              selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
-            NavigationDestination(
-              icon: Icon(Icons.groups_outlined),
-              selectedIcon: Icon(Icons.groups), label: 'Komunitas'),
-            NavigationDestination(
-              icon: Icon(Icons.grid_view_outlined),
-              selectedIcon: Icon(Icons.grid_view), label: 'Feed'),
-            NavigationDestination(
-              icon: Icon(Icons.public_outlined),
-              selectedIcon: Icon(Icons.public), label: 'Browser'),
-            NavigationDestination(
-              icon: Icon(Icons.account_balance_wallet_outlined),
-              selectedIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person), label: 'Profil'),
+        // Perlebar area swipe agar gesture buka drawer terasa lebih natural.
+        drawerEdgeDragWidth: 48,
+        body: Stack(
+          children: [
+            Positioned.fill(child: widget.child),
+            if (!hideBubble && !keyboardOpen)
+              MFloatingNavBubble(
+                items: _navItems,
+                currentPath: loc,
+              ),
           ],
         ),
       ),
