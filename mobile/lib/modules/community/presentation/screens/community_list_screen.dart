@@ -29,18 +29,8 @@ class CommunityListScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _open(WidgetRef ref, BuildContext ctx, String serverId) async {
-    try {
-      final res = await ref.read(dioProvider).get('/community/servers/$serverId/channels');
-      final list = (res.data as List).cast<Map<String, dynamic>>();
-      if (list.isEmpty) {
-        if (ctx.mounted) MSnackbar.warning(ctx, 'Server belum punya channel');
-        return;
-      }
-      if (ctx.mounted) ctx.push('/home/community/$serverId/channel/${list.first['id']}');
-    } catch (e) {
-      if (ctx.mounted) MSnackbar.error(ctx, 'Gagal: $e');
-    }
+  void _open(BuildContext ctx, String serverId) {
+    ctx.push('/home/community/$serverId/overview');
   }
 
   @override
@@ -78,7 +68,7 @@ class CommunityListScreen extends ConsumerWidget {
                 final joined = s['joined'] as bool? ?? false;
                 return MCard(
                   margin: const EdgeInsets.only(bottom: MyloSpacing.md),
-                  onTap: joined ? () => _open(ref, context, s['id']) : null,
+                  onTap: joined ? () => _open(context, s['id']) : null,
                   child: Row(children: [
                     s['iconUrl'] != null
                         ? ClipRRect(borderRadius: BorderRadius.circular(MyloRadius.md),
