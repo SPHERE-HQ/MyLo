@@ -373,19 +373,46 @@ jobs:
           echo "::error::Flutter test gagal (exit ${{ steps.flutter_test.outputs.exit_code }}). Cek artifact 'flutter-test-report-build-${{ github.run_number }}' untuk detail. Build APK dibatalkan."
           exit 1
 
+      # set -o pipefail penting: tanpa ini, exit code dari `flutter build apk`
+      # ketelan oleh `tee` (yang selalu exit 0), sehingga step jadi "sukses"
+      # padahal APK tidak terbentuk → muncul warning "No files were found"
+      # di upload step dan release ter-publish dengan artifact kosong.
       - name: Build APK release (split per ABI + signed)
         working-directory: mobile
+        shell: bash
         run: |
+          set -o pipefail
           flutter build apk --release --split-per-abi \
             --build-number=${{ github.run_number }} \
             --dart-define=API_URL=https://mylo-production-5516.up.railway.app 2>&1 | tee build-split-abi.log
 
       - name: Build APK release (universal / fat APK)
         working-directory: mobile
+        shell: bash
         run: |
+          set -o pipefail
           flutter build apk --release \
             --build-number=${{ github.run_number }} \
             --dart-define=API_URL=https://mylo-production-5516.up.railway.app 2>&1 | tee build-universal.log
+
+      # Sanity check: kalau ada APK yang hilang setelah build "sukses",
+      # gagalkan step ini supaya tidak naik ke release dengan artifact kosong.
+      - name: Verifikasi APK terbentuk
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          missing=0
+          for f in app-release.apk app-arm64-v8a-release.apk app-armeabi-v7a-release.apk app-x86_64-release.apk; do
+            if [ ! -f "$OUT/$f" ]; then
+              echo "::error::APK hilang: $OUT/$f"
+              missing=1
+            else
+              echo "OK $OUT/$f ($(wc -c < "$OUT/$f") bytes)"
+            fi
+          done
+          [ $missing -eq 0 ]
 
       # ─────────────────────────────────────────────────────────
       # Upload log build (gagal ATAU sukses) supaya bisa diaudit

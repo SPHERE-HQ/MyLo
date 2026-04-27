@@ -79,5 +79,14 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+# Override transitive dep `record_linux` 0.7.2 yang ditarik oleh `record: ^5.2.1`.
+# Versi 0.7.2 tidak implement `startStream` dan signature `hasPermission` sudah
+# beda dengan `record_platform_interface 1.5.0`, sehingga kernel snapshot
+# Flutter gagal compile walau target build-nya cuma Android.
+# `record_linux: ^1.0.0` mengikuti interface baru — di Android kelasnya tidak
+# pernah di-instantiate, hanya perlu lulus type-check.
+dependency_overrides:
+  record_linux: ^1.0.0
+
 flutter:
   uses-material-design: true
