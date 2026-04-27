@@ -117,7 +117,7 @@ Handler createWsHandler() {
                              VALUES (@id, @conv, @sender, @type, @content, @media, @readBy::jsonb, @ts)"""),
                 parameters: {
                   "id": id, "conv": convId, "sender": userId,
-                  "type": msgType, "content": content, "media": mediaUrl,
+                  "type": msgType, "content": content ?? "", "media": mediaUrl,
                   "readBy": jsonEncode([userId]), "ts": createdAt,
                 },
               );
