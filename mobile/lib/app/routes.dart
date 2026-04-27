@@ -130,6 +130,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               conversationId: s.pathParameters['id']!,
               otherName: s.uri.queryParameters['name'] ?? 'Panggilan',
               video: s.uri.queryParameters['video'] == '1',
+              otherAvatar: s.uri.queryParameters['avatar'],
               mode: CallMode.direct,
             ),
           ),
@@ -208,6 +209,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               return VoiceCallScreen(
                 conversationId: s.pathParameters['channelId']!,
                 otherName: extra?['name']?.toString() ?? 'Voice Room',
+                serverId: s.pathParameters['serverId'],
                 mode: CallMode.room,
               );
             },

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/m_side_drawer.dart';
 import '../widgets/m_floating_nav_bubble.dart';
+import '../widgets/m_active_call_pill.dart';
 
 /// Mapping antara root path tab dan label/ikonnya.
 /// Index 0 ('/home/chat') juga jadi tab "home" yang dipakai untuk
@@ -32,6 +33,15 @@ bool _shouldHideBubble(String location) {
   // Sembunyikan di channel komunitas.
   if (RegExp(r'^/home/community/[^/]+/channel/').hasMatch(location)) return true;
   // Sembunyikan di story viewer.
+  if (location.startsWith('/home/feed/story')) return true;
+  return false;
+}
+
+/// Pill panggilan aktif disembunyikan saat user sedang membuka layar
+/// panggilan itu sendiri (kalau tidak, pill akan dobel menutupi layar).
+bool _shouldHidePill(String location) {
+  if (location.contains('/voice')) return true;
+  // Story viewer fullscreen — biarkan pengguna fokus.
   if (location.startsWith('/home/feed/story')) return true;
   return false;
 }
@@ -97,6 +107,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final loc = _currentLocation(context);
     final hideBubble = _shouldHideBubble(loc);
+    final hidePill = _shouldHidePill(loc);
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return PopScope(
@@ -112,7 +123,22 @@ class _HomeShellState extends State<HomeShell> {
         drawerEdgeDragWidth: 48,
         body: Stack(
           children: [
-            Positioned.fill(child: widget.child),
+            // Konten utama. Kalau sedang dalam panggilan & user buka layar
+            // panggilan, layar itu di-push di atas HomeShell jadi pill ini
+            // tertutup secara natural; tapi di tab manapun lainnya, pill
+            // tetap nempel di atas konten supaya panggilan gampang dibuka
+            // lagi.
+            Positioned.fill(
+              child: hidePill
+                  ? widget.child
+                  : SafeArea(
+                      bottom: false,
+                      child: Column(children: [
+                        const MActiveCallPill(),
+                        Expanded(child: widget.child),
+                      ]),
+                    ),
+            ),
             if (!hideBubble && !keyboardOpen)
               MFloatingNavBubble(
                 items: _navItems,
