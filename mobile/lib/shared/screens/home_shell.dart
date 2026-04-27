@@ -7,6 +7,7 @@ import '../widgets/m_side_drawer.dart';
 /// is also the "home tab" we fall back to before exiting the app.
 const _tabPaths = <String>[
   '/home/chat',
+  '/home/community',
   '/home/feed',
   '/home/browser',
   '/home/wallet',
@@ -90,6 +91,9 @@ class _HomeShellState extends State<HomeShell> {
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
               selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
+            NavigationDestination(
+              icon: Icon(Icons.groups_outlined),
+              selectedIcon: Icon(Icons.groups), label: 'Komunitas'),
             NavigationDestination(
               icon: Icon(Icons.grid_view_outlined),
               selectedIcon: Icon(Icons.grid_view), label: 'Feed'),
