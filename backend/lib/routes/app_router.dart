@@ -880,37 +880,20 @@ Future<Response> _createPost(Request r) async {
 
     final db = await getDb();
     final id = _uuid.v4();
-    // Coba insert dengan media_urls (jsonb/text) + type
-    // Kalau kolom tidak ada, fallback ke insert minimal
-    try {
-      await db.execute(
-        Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
-                     VALUES (@id, @u, @c, @m::text, @t)"""),
-        parameters: {
-          "id": id,
-          "u": me,
-          "c": caption.isEmpty ? null : caption,
-          "m": jsonEncode(mediaList),
-          "t": (body["type"] ?? "post").toString(),
-        },
-      );
-    } catch (dbErr) {
-      // Fallback: coba tanpa kolom type
-      try {
-        await db.execute(
-          Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls)
-                       VALUES (@id, @u, @c, @m::text)"""),
-          parameters: {"id": id, "u": me, "c": caption.isEmpty ? null : caption, "m": jsonEncode(mediaList)},
-        );
-      } catch (dbErr2) {
-        // Fallback terakhir: tanpa media_urls dan type
-        await db.execute(
-          Sql.named("""INSERT INTO feed_posts (id, user_id, caption)
-                       VALUES (@id, @u, @c)"""),
-          parameters: {"id": id, "u": me, "c": caption.isEmpty ? 'post' : caption},
-        );
-      }
-    }
+    // Skema sudah dipastikan oleh startup migration (caption TEXT nullable,
+    // media_urls JSONB, type VARCHAR). Kolom JSONB butuh cast eksplisit
+    // ::jsonb dari string JSON; cast ::text yang lama menyebabkan error 500.
+    await db.execute(
+      Sql.named("""INSERT INTO feed_posts (id, user_id, caption, media_urls, type)
+                   VALUES (@id, @u, @c, @m::jsonb, @t)"""),
+      parameters: {
+        "id": id,
+        "u": me,
+        "c": caption.isEmpty ? null : caption,
+        "m": jsonEncode(mediaList),
+        "t": (body["type"] ?? "post").toString(),
+      },
+    );
     return created({"id": id, "mediaUrls": mediaList});
   } catch (e, st) {
     print("Create post error: $e\n$st");
@@ -1130,8 +1113,13 @@ Future<Response> _createServer(Request r) async {
       Sql.named("INSERT INTO community_members (server_id, user_id, role) VALUES (@s, @u, 'owner')"),
       parameters: {"s": id, "u": me},
     );
+    // Auto-create dua channel default: text "umum" + voice "obrolan suara".
     await db.execute(
-      Sql.named("INSERT INTO community_channels (id, server_id, name, type) VALUES (@id, @s, 'general', 'text')"),
+      Sql.named("INSERT INTO community_channels (id, server_id, name, type, position) VALUES (@id, @s, 'umum', 'text', 0)"),
+      parameters: {"id": _uuid.v4(), "s": id},
+    );
+    await db.execute(
+      Sql.named("INSERT INTO community_channels (id, server_id, name, type, position) VALUES (@id, @s, 'obrolan-suara', 'voice', 1)"),
       parameters: {"id": _uuid.v4(), "s": id},
     );
     return created({"id": id, "inviteCode": inviteCode});
