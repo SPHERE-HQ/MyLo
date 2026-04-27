@@ -19,6 +19,8 @@ import '../../../../core/storage/supabase_service.dart';
 import '../../../../shared/widgets/m_avatar.dart';
 import '../../../../shared/widgets/m_snackbar.dart';
 import '../widgets/sticker_picker.dart';
+import '../widgets/voice_note_player.dart';
+import '../widgets/voice_note_recorder.dart';
 import 'starred_messages_screen.dart';
 
 const _storage = FlutterSecureStorage();
@@ -89,6 +91,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final Set<String> _hiddenIds = {};
   final Set<String> _voiceParticipants = {};
   _Panel _panel = _Panel.none;
+  // Status panel rekam voice note (gaya WA: hold-to-record + lock).
+  RecordingUiState _recState = RecordingUiState.idle;
+  final GlobalKey<HoldToRecordButtonState> _recKey =
+      GlobalKey<HoldToRecordButtonState>();
 
   String get _convKey => widget.conversationId;
 
@@ -407,6 +413,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     required String msgType,
     String? mediaUrl,
     bool viewOnce = false,
+    int? audioDurationMs,
   }) {
     final clientId = _uuid.v4();
     final replyToId = _replyTo?['id']?.toString();
@@ -428,6 +435,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       '_status': _MsgStatus.pending.index,
       if (_disappearingSec > 0) 'expiresInSec': _disappearingSec,
+      if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
     };
     setState(() {
       _messages.add(temp);
@@ -443,8 +451,35 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         'replyToId': replyToId,
         'clientMsgId': clientId,
         if (_disappearingSec > 0) 'expiresInSec': _disappearingSec,
+        if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
       }));
     }
+  }
+
+  /// Upload file voice note ke Supabase, lalu kirim sebagai pesan audio.
+  Future<void> _sendVoiceNote(VoiceNoteResult r) async {
+    final me = ref.read(authStateProvider).value;
+    if (me == null) return;
+    setState(() => _uploading = true);
+    String? url;
+    try {
+      url = await SupabaseService.uploadMedia(r.file, me.id, 'chat');
+    } catch (e) {
+      if (mounted) MSnackbar.error(context, 'Upload pesan suara gagal: $e');
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+      // Bersih-bersih file lokal hasil rekam.
+      try {
+        await r.file.delete();
+      } catch (_) {}
+    }
+    if (url == null) return;
+    _sendMessage(
+      content: null,
+      msgType: 'audio',
+      mediaUrl: url,
+      audioDurationMs: r.duration.inMilliseconds,
+    );
   }
 
   Future<void> _pickAndSendImage({bool viewOnce = false, ImageSource source = ImageSource.gallery}) async {
@@ -860,7 +895,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final preview = (r['content'] as String?)?.trim().isNotEmpty == true
         ? r['content'] as String
         : (r['msgType'] == 'image' ? '📷 Foto' :
-            (r['msgType'] == 'sticker' ? '😀 Stiker' : '[Media]'));
+            (r['msgType'] == 'sticker' ? '😀 Stiker' :
+              (r['msgType'] == 'audio' ? '🎤 Pesan suara' :
+                (r['msgType'] == 'view_once_image' ? '📷 Foto sekali lihat' : '[Media]'))));
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(
@@ -918,6 +955,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final isSticker = msgType == 'sticker' && !isDeleted && mediaUrl != null;
     final isImage = msgType == 'image' && !isDeleted && mediaUrl != null;
     final isViewOnce = msgType == 'view_once_image' && !isDeleted && mediaUrl != null;
+    final isAudio = msgType == 'audio' && !isDeleted && mediaUrl != null;
+    final audioDurMs = (msg['audioDurationMs'] as num?)?.toInt();
     final content = isDeleted ? 'Pesan dihapus' : (msg['content'] as String? ?? '');
     final createdAt = msg['createdAt'] != null
         ? DateTime.tryParse(msg['createdAt'] as String)?.toLocal()
@@ -942,7 +981,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               margin: const EdgeInsets.symmetric(vertical: 3),
               padding: isSticker || isImage || isViewOnce
                   ? const EdgeInsets.all(4)
-                  : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  : (isAudio
+                      ? const EdgeInsets.symmetric(horizontal: 8, vertical: 8)
+                      : const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10)),
               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
               decoration: BoxDecoration(
                 color: (isSticker)
@@ -985,6 +1027,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   )
                 else if (isViewOnce)
                   _viewOnceTile(id, mediaUrl, isMine)
+                else if (isAudio)
+                  VoiceNotePlayer(
+                    url: mediaUrl,
+                    duration: audioDurMs != null
+                        ? Duration(milliseconds: audioDurMs)
+                        : null,
+                    isMine: isMine,
+                  )
                 else if (!isDeleted && (msg['content'] as String? ?? '').isNotEmpty)
                   Text(content,
                     style: TextStyle(
@@ -1240,6 +1290,24 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   Widget _inputBar() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final recording = _recState.recording;
+    final locked = _recState.locked;
+
+    // Tombol mic ala WA (hold-to-record). Selalu dirender supaya gesture
+    // long-press tetap aktif walau panel rekam menutupi area input.
+    final micButton = HoldToRecordButton(
+      key: _recKey,
+      enabled: !_uploading && _editing == null,
+      onRecorded: _sendVoiceNote,
+      onStateChange: (s) {
+        if (!mounted) return;
+        setState(() => _recState = s);
+      },
+      onPermissionDenied: () {
+        if (mounted) MSnackbar.error(context, 'Izin mikrofon ditolak');
+      },
+    );
+
     return Container(
       padding: EdgeInsets.fromLTRB(8, 8, 8,
           _panel == _Panel.emoji ? 8 : MediaQuery.of(context).viewInsets.bottom + 12),
@@ -1248,75 +1316,124 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         border: Border(
             top: BorderSide(color: (isDark ? MyloColors.borderDark : MyloColors.border).withAlpha(128))),
       ),
-      child: Row(children: [
-        IconButton(
-          tooltip: _panel == _Panel.emoji ? 'Tutup emoji' : 'Emoji',
-          icon: Icon(_panel == _Panel.emoji ? Icons.keyboard_outlined : Icons.emoji_emotions_outlined,
-              color: MyloColors.textSecondary),
-          onPressed: _toggleEmoji,
-        ),
-        Expanded(
-          child: TextField(
-            controller: _ctrl, focusNode: _focus,
-            onChanged: (_) => _sendTyping(),
-            maxLines: 5, minLines: 1,
-            textCapitalization: TextCapitalization.sentences,
-            style: TextStyle(color: isDark ? MyloColors.textPrimaryDark : MyloColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: _editing != null ? 'Edit pesan...' : 'Pesan...',
-              filled: true,
-              fillColor: isDark ? MyloColors.surfaceSecondaryDark : MyloColors.surfaceSecondary,
-              hintStyle: const TextStyle(color: MyloColors.textTertiary),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              suffixIcon: _editing != null
-                  ? null
-                  : Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(
-                        tooltip: 'Lampiran',
-                        icon: _uploading
-                            ? const SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.attach_file, color: MyloColors.textSecondary),
-                        onPressed: _uploading ? null : _showAttachmentSheet,
-                      ),
-                      IconButton(
-                        tooltip: 'Kamera',
-                        icon: const Icon(Icons.camera_alt_outlined,
-                            color: MyloColors.textSecondary),
-                        onPressed: _uploading
-                            ? null
-                            : () => _pickAndSendImage(source: ImageSource.camera),
-                      ),
-                    ]),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        ValueListenableBuilder(
-          valueListenable: _ctrl,
-          builder: (_, v, __) {
-            if (_editing != null) {
-              return IconButton(
-                tooltip: 'Simpan edit',
-                icon: const Icon(Icons.check_circle, color: MyloColors.primary, size: 28),
-                onPressed: _sendText,
-              );
-            }
-            return v.text.trim().isEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.mic_outlined, color: MyloColors.primary, size: 28),
-                    onPressed: () => _openVoice(false),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.send, color: MyloColors.primary, size: 26),
-                    onPressed: _sendText,
-                  );
-          },
-        ),
-      ]),
+      child: recording
+          ? Row(children: [
+              if (locked)
+                Expanded(
+                  child: RecordingPanel(
+                    state: _recState,
+                    onCancel: () =>
+                        _recKey.currentState?.cancelFromLocked(),
+                    onSend: () =>
+                        _recKey.currentState?.stopFromLocked(),
+                  ),
+                )
+              else ...[
+                Expanded(
+                  child: RecordingPanel(
+                    state: _recState,
+                    onCancel: () {},
+                    onSend: () {},
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Mic tetap dirender supaya long-press aktif sampai user lepas.
+                micButton,
+              ],
+            ])
+          : Row(children: [
+              IconButton(
+                tooltip: _panel == _Panel.emoji ? 'Tutup emoji' : 'Emoji',
+                icon: Icon(
+                    _panel == _Panel.emoji
+                        ? Icons.keyboard_outlined
+                        : Icons.emoji_emotions_outlined,
+                    color: MyloColors.textSecondary),
+                onPressed: _toggleEmoji,
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  focusNode: _focus,
+                  onChanged: (_) => _sendTyping(),
+                  maxLines: 5,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: TextStyle(
+                      color: isDark
+                          ? MyloColors.textPrimaryDark
+                          : MyloColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: _editing != null ? 'Edit pesan...' : 'Pesan...',
+                    filled: true,
+                    fillColor: isDark
+                        ? MyloColors.surfaceSecondaryDark
+                        : MyloColors.surfaceSecondary,
+                    hintStyle: const TextStyle(color: MyloColors.textTertiary),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    suffixIcon: _editing != null
+                        ? null
+                        : Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                              tooltip: 'Stiker',
+                              icon: const Icon(
+                                  Icons.emoji_symbols_outlined,
+                                  color: MyloColors.textSecondary),
+                              onPressed:
+                                  _uploading ? null : _openStickerPicker,
+                            ),
+                            IconButton(
+                              tooltip: 'Lampiran',
+                              icon: _uploading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.attach_file,
+                                      color: MyloColors.textSecondary),
+                              onPressed:
+                                  _uploading ? null : _showAttachmentSheet,
+                            ),
+                            IconButton(
+                              tooltip: 'Kamera',
+                              icon: const Icon(Icons.camera_alt_outlined,
+                                  color: MyloColors.textSecondary),
+                              onPressed: _uploading
+                                  ? null
+                                  : () => _pickAndSendImage(
+                                      source: ImageSource.camera),
+                            ),
+                          ]),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              ValueListenableBuilder(
+                valueListenable: _ctrl,
+                builder: (_, v, __) {
+                  if (_editing != null) {
+                    return IconButton(
+                      tooltip: 'Simpan edit',
+                      icon: const Icon(Icons.check_circle,
+                          color: MyloColors.primary, size: 28),
+                      onPressed: _sendText,
+                    );
+                  }
+                  return v.text.trim().isEmpty
+                      ? micButton
+                      : IconButton(
+                          icon: const Icon(Icons.send,
+                              color: MyloColors.primary, size: 26),
+                          onPressed: _sendText,
+                        );
+                },
+              ),
+            ]),
     );
   }
 

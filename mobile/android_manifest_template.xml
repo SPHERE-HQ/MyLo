@@ -73,7 +73,8 @@
         android:usesCleartextTraffic="false"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="false"
-        android:fullBackupContent="false">
+        android:fullBackupContent="false"
+        android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"

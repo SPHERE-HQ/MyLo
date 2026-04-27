@@ -18,12 +18,13 @@ class NavBubbleItem {
 
 /// Bubble bulat melayang yang bisa digeser ke mana saja di layar.
 /// Ketika di-tap, memunculkan dropdown menu navigasi.
-/// Posisi disimpan di state agar tidak loncat saat rebuild.
+///
+/// Implementasi pakai `Listener` (low-level pointer events) supaya gerakan
+/// terasa seketika — tidak perlu menunggu disambiguation tap-vs-pan dari
+/// gesture arena Flutter (yang biasanya bikin bubble "lag" 100ms saat geser).
 class MFloatingNavBubble extends StatefulWidget {
   final List<NavBubbleItem> items;
   final String currentPath;
-
-  /// Nilai antara 0..1 untuk posisi awal bubble (relatif terhadap layar).
   final Offset initialFraction;
 
   const MFloatingNavBubble({
@@ -42,10 +43,16 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
   static const double _bubbleSize = 56;
   static const double _menuWidth = 220;
   static const double _edgePadding = 8;
+  // Threshold (px) untuk menganggap pointer benar-benar bergerak (drag),
+  // bukan sekadar getaran saat tap. Lebih kecil = bubble terasa lebih ringan.
+  static const double _dragThreshold = 3;
 
   Offset? _pos;
+  Offset _pointerDownPos = Offset.zero;
+  Offset _pointerDownBubblePos = Offset.zero;
   bool _expanded = false;
   bool _wasDragged = false;
+  bool _dragging = false;
   late final AnimationController _anim;
   late final Animation<double> _scale;
 
@@ -95,7 +102,15 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
   void _navigate(String path) {
     _closeMenu();
     if (path == widget.currentPath) return;
-    GoRouter.of(context).go(path);
+    final router = GoRouter.of(context);
+    // Bersihkan stack sub-halaman yang mungkin di-`push` di atas tab
+    // sekarang (mis. /home/settings/password) sebelum pindah tab,
+    // supaya tombol back Android dari tab baru tidak tiba-tiba kembali
+    // ke sub-halaman tab lama.
+    while (router.canPop()) {
+      router.pop();
+    }
+    router.go(path);
   }
 
   @override
@@ -112,23 +127,27 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
       _pos!.dy.clamp(safe.top + _edgePadding, maxY).toDouble(),
     );
 
-    // Apakah menu lebih baik dimunculkan ke kiri / atas bubble agar muat layar.
     final spaceRight = size.width - pos.dx - _bubbleSize;
     final showLeft = spaceRight < _menuWidth + 16;
     final menuLeft = showLeft
-        ? (pos.dx - _menuWidth + _bubbleSize).clamp(8, size.width - _menuWidth - 8).toDouble()
+        ? (pos.dx - _menuWidth + _bubbleSize)
+            .clamp(8, size.width - _menuWidth - 8)
+            .toDouble()
         : (pos.dx).clamp(8, size.width - _menuWidth - 8).toDouble();
 
     final menuItemsHeight = (widget.items.length * 48.0) + 16;
     final showAbove = pos.dy + _bubbleSize + menuItemsHeight + 8 >
         size.height - safe.bottom - 8;
     final menuTop = showAbove
-        ? (pos.dy - menuItemsHeight - 8).clamp(safe.top + 8, size.height).toDouble()
-        : (pos.dy + _bubbleSize + 8).clamp(safe.top + 8, size.height).toDouble();
+        ? (pos.dy - menuItemsHeight - 8)
+            .clamp(safe.top + 8, size.height)
+            .toDouble()
+        : (pos.dy + _bubbleSize + 8)
+            .clamp(safe.top + 8, size.height)
+            .toDouble();
 
     return Stack(
       children: [
-        // Backdrop untuk menutup menu saat tap di luar.
         if (_expanded)
           Positioned.fill(
             child: GestureDetector(
@@ -137,8 +156,6 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
               child: const ColoredBox(color: Color(0x33000000)),
             ),
           ),
-
-        // Menu dropdown.
         if (_expanded)
           Positioned(
             left: menuLeft,
@@ -156,28 +173,40 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
               ),
             ),
           ),
-
-        // Bubble itu sendiri.
         Positioned(
           left: pos.dx,
           top: pos.dy,
-          child: _BubbleWidget(
-            size: _bubbleSize,
-            expanded: _expanded,
-            onPanStart: (_) => _wasDragged = false,
-            onPanUpdate: (d) {
-              _wasDragged = _wasDragged ||
-                  d.delta.distance > 1.5;
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (e) {
+              _pointerDownPos = e.position;
+              _pointerDownBubblePos = pos;
+              _wasDragged = false;
+              _dragging = false;
+            },
+            onPointerMove: (e) {
+              final delta = e.position - _pointerDownPos;
+              if (!_wasDragged && delta.distance < _dragThreshold) return;
+              _wasDragged = true;
+              if (!_dragging) _dragging = true;
               setState(() {
                 _pos = Offset(
-                  (pos.dx + d.delta.dx).clamp(_edgePadding, maxX).toDouble(),
-                  (pos.dy + d.delta.dy).clamp(safe.top + _edgePadding, maxY).toDouble(),
+                  (_pointerDownBubblePos.dx + delta.dx)
+                      .clamp(_edgePadding, maxX)
+                      .toDouble(),
+                  (_pointerDownBubblePos.dy + delta.dy)
+                      .clamp(safe.top + _edgePadding, maxY)
+                      .toDouble(),
                 );
               });
             },
-            onPanEnd: (_) {
+            onPointerUp: (e) {
+              if (!_wasDragged) {
+                _toggleMenu();
+                return;
+              }
               // Snap ke tepi terdekat agar tidak menutup konten.
-              final centerX = pos.dx + _bubbleSize / 2;
+              final centerX = _pos!.dx + _bubbleSize / 2;
               final snapToRight = centerX > size.width / 2;
               setState(() {
                 _pos = Offset(
@@ -185,14 +214,14 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
                   _pos!.dy.clamp(safe.top + _edgePadding, maxY).toDouble(),
                 );
               });
+              _dragging = false;
             },
-            onTap: () {
-              if (_wasDragged) {
-                _wasDragged = false;
-                return;
-              }
-              _toggleMenu();
-            },
+            onPointerCancel: (_) => _dragging = false,
+            child: _BubbleWidget(
+              size: _bubbleSize,
+              expanded: _expanded,
+              dragging: _dragging,
+            ),
           ),
         ),
       ],
@@ -203,57 +232,45 @@ class _MFloatingNavBubbleState extends State<MFloatingNavBubble>
 class _BubbleWidget extends StatelessWidget {
   final double size;
   final bool expanded;
-  final void Function(DragStartDetails) onPanStart;
-  final void Function(DragUpdateDetails) onPanUpdate;
-  final void Function(DragEndDetails) onPanEnd;
-  final VoidCallback onTap;
+  final bool dragging;
 
   const _BubbleWidget({
     required this.size,
     required this.expanded,
-    required this.onPanStart,
-    required this.onPanUpdate,
-    required this.onPanEnd,
-    required this.onTap,
+    required this.dragging,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onPanStart: onPanStart,
-      onPanUpdate: onPanUpdate,
-      onPanEnd: onPanEnd,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [MyloColors.primary, MyloColors.secondary],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: MyloColors.primary.withAlpha(110),
-              blurRadius: expanded ? 18 : 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: Colors.white.withAlpha(60), width: 1),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [MyloColors.primary, MyloColors.secondary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          transitionBuilder: (c, a) =>
-              ScaleTransition(scale: a, child: RotationTransition(turns: a, child: c)),
-          child: Icon(
-            expanded ? Icons.close : Icons.apps,
-            key: ValueKey(expanded),
-            color: Colors.white,
-            size: 26,
+        boxShadow: [
+          BoxShadow(
+            color: MyloColors.primary.withAlpha(dragging ? 160 : 110),
+            blurRadius: dragging ? 22 : (expanded ? 18 : 12),
+            offset: Offset(0, dragging ? 6 : 4),
           ),
+        ],
+        border: Border.all(color: Colors.white.withAlpha(60), width: 1),
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (c, a) =>
+            ScaleTransition(scale: a, child: RotationTransition(turns: a, child: c)),
+        child: Icon(
+          expanded ? Icons.close : Icons.apps,
+          key: ValueKey(expanded),
+          color: Colors.white,
+          size: 26,
         ),
       ),
     );

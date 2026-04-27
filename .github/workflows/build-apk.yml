@@ -122,12 +122,13 @@ jobs:
             fi
           fi
 
-          # Fix minSdkVersion ke 21
+          # Fix minSdkVersion ke 23 (dibutuhkan oleh record + audioplayers
+          # untuk fitur voice note. Android 6.0+ mencakup >99% perangkat 2026).
           if [ -n "$APP_GRADLE" ]; then
             if [[ "$APP_GRADLE" == *.kts ]]; then
-              sed -i 's/minSdk\s*=\s*.*/minSdk = 21/' "$APP_GRADLE" || true
+              sed -i 's/minSdk\s*=\s*.*/minSdk = 23/' "$APP_GRADLE" || true
             else
-              sed -i 's/minSdkVersion\s.*/minSdkVersion 21/' "$APP_GRADLE" || true
+              sed -i 's/minSdkVersion\s.*/minSdkVersion 23/' "$APP_GRADLE" || true
             fi
           fi
 
