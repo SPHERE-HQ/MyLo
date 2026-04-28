@@ -50,7 +50,9 @@ dependencies:
   # Audio (voice notes)
   record: ^5.2.1
   audioplayers: ^6.1.0
-  vibration: ^3.1.0
+  # NB: pakai 2.x — versi 3.x narik device_info_plus 12.x yg bentrok
+  # dengan Kotlin Gradle plugin proyek (build error compileReleaseKotlin).
+  vibration: ^2.0.0
   flutter_ringtone_player: ^4.0.0+3
   path_provider: ^2.1.5
 
