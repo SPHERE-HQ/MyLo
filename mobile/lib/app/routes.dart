@@ -18,6 +18,9 @@ import '../modules/chat/presentation/screens/chat_room_screen.dart';
 import '../modules/chat/presentation/screens/create_group_screen.dart';
 import '../modules/chat/presentation/screens/group_settings_screen.dart';
 import '../modules/chat/presentation/screens/voice_call_screen.dart';
+import '../modules/chat/presentation/screens/incoming_call_screen.dart';
+import '../modules/community/presentation/screens/community_voice_screen.dart';
+import '../core/call/incoming_call_service.dart';
 import '../modules/chat/presentation/screens/forward_picker_screen.dart';
 import '../modules/chat/presentation/screens/starred_messages_screen.dart';
 import '../modules/community/presentation/screens/channel_screen.dart';
@@ -88,6 +91,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: notifier.redirect,
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
+      // Layar incoming call (panggilan masuk) — di luar HomeShell agar
+      // muncul full-screen tanpa nav bar.
+      GoRoute(
+        path: '/incoming-call',
+        builder: (_, s) {
+          final ev = s.extra as IncomingCallEvent?;
+          if (ev == null) {
+            return const Scaffold(body: Center(child: Text('Tidak ada panggilan')));
+          }
+          return IncomingCallScreen(event: ev);
+        },
+      ),
       GoRoute(path: '/auth/onboarding', builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
@@ -206,11 +221,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/home/community/:serverId/voice/:channelId',
             builder: (_, s) {
               final extra = s.extra as Map<String, dynamic>?;
-              return VoiceCallScreen(
-                conversationId: s.pathParameters['channelId']!,
-                otherName: extra?['name']?.toString() ?? 'Voice Room',
-                serverId: s.pathParameters['serverId'],
-                mode: CallMode.room,
+              return CommunityVoiceScreen(
+                serverId: s.pathParameters['serverId']!,
+                channelId: s.pathParameters['channelId']!,
+                channelName: extra?['name']?.toString() ??
+                    s.uri.queryParameters['name'] ??
+                    'Voice Channel',
               );
             },
           ),

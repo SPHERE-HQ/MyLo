@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/theme_provider.dart';
+import '../core/call/incoming_call_service.dart';
 import 'routes.dart';
 import 'theme.dart';
 
@@ -12,6 +13,10 @@ class MyloApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final mode = ref.watch(themeModeProvider);
     final scale = ref.watch(textScaleProvider);
+    // Hidupkan listener panggilan masuk global (ringtone + push layar
+    // incoming saat ada `voice_incoming` dari backend). Otomatis stop
+    // saat user logout.
+    wireIncomingCallService(ref);
     return MaterialApp.router(
       title: 'Mylo',
       debugShowCheckedModeBanner: false,

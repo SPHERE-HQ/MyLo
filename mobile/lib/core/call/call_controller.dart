@@ -162,11 +162,33 @@ class CallController extends ChangeNotifier {
     _camOn = video && (res[Permission.camera]?.isGranted ?? false);
 
     try {
+      // Pasang konfigurasi audio Android ke mode komunikasi sebelum
+      // membuka stream. Ini bikin AudioManager pakai MODE_IN_COMMUNICATION
+      // sehingga speakerphone toggle benar-benar dipatuhi & echo
+      // cancellation menyala. Tanpa ini, audio bisa diam total di
+      // beberapa device Android.
+      try {
+        await Helper.setAndroidAudioConfiguration(
+          AndroidAudioConfiguration(
+            manageAudioFocus: true,
+            androidAudioMode: AndroidAudioMode.inCommunication,
+            androidAudioFocusMode: AndroidAudioFocusMode.gain,
+            androidAudioStreamType: AndroidAudioStreamType.voiceCall,
+            androidAudioAttributesUsageType:
+                AndroidAudioAttributesUsageType.voiceCommunication,
+          ),
+        );
+      } catch (_) {
+        // Tidak fatal — pada iOS / device yang tidak support, abaikan.
+      }
       _localStream = await navigator.mediaDevices.getUserMedia({
         'audio': true,
         'video': _camOn,
       });
       localRenderer.srcObject = _localStream;
+      // Default route: video call → speaker, voice call → earpiece
+      // (mirip WhatsApp). User tetap bisa toggle nanti.
+      _speaker = video;
       await Helper.setSpeakerphoneOn(_speaker);
     } catch (e) {
       _errorReason = 'Tidak dapat akses mikrofon: $e';
@@ -249,6 +271,10 @@ class CallController extends ChangeNotifier {
         _ws!.sink.add(jsonEncode({
           'type': 'voice_join',
           'conversationId': conversationId,
+          // Backend butuh `video` untuk dipropagasi ke incoming call.
+          'video': video,
+          // Voice room komunitas TIDAK trigger ringtone di sisi member.
+          'kind': isDirect ? 'chat' : 'room',
         }));
         if (!isDirect) {
           _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
@@ -331,6 +357,17 @@ class CallController extends ChangeNotifier {
           _remoteRenderers.putIfAbsent(uid, () => RTCVideoRenderer());
       if (renderer.textureId == null) await renderer.initialize();
       renderer.srcObject = stream;
+      // Re-apply audio routing setiap kali track baru sampai. Pada Android,
+      // setSpeakerphoneOn yang dipanggil sebelum ada audio stream kadang
+      // tidak efektif — re-apply di sini bikin audio benar-benar keluar.
+      try {
+        await Helper.setSpeakerphoneOn(_speaker);
+      } catch (_) {}
+      // Pastikan track audio remote di-enable (default-nya sudah enable,
+      // tapi jaga-jaga).
+      for (final t in stream.getAudioTracks()) {
+        t.enabled = true;
+      }
       if (isDirect) _markConnected();
       notifyListeners();
     };

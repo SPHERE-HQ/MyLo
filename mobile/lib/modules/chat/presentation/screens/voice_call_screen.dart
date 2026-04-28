@@ -238,6 +238,36 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       );
 
   Widget _videoGrid(CallController c) {
+    // 1-on-1 (direct + tepat 1 remote): tampilan WhatsApp — remote
+    // memenuhi layar, kamera sendiri jadi PiP kecil di pojok kanan-atas
+    // yang bisa di-drag.
+    if (c.isDirect && c.remoteRenderers.length == 1) {
+      final remote = c.remoteRenderers.values.first;
+      return Stack(children: [
+        Positioned.fill(
+          child: Container(
+            color: Colors.black,
+            child: RTCVideoView(remote,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+          ),
+        ),
+        if (c.camOn)
+          Positioned(
+            top: 80,
+            right: 16,
+            child: _SelfPipTile(
+              renderer: c.localRenderer,
+              onTap: () {
+                // Tap PiP = swap (placeholder: untuk MVP cukup ganti
+                // kamera depan/belakang). Bisa di-extend nanti.
+                c.switchCamera();
+              },
+            ),
+          ),
+      ]);
+    }
+
+    // Group / komunitas → grid.
     final tiles = <Widget>[];
     for (final entry in c.remoteRenderers.entries) {
       tiles.add(_videoTile(entry.value, label: 'Peserta'));
@@ -364,5 +394,48 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
+  }
+}
+
+/// Picture-in-picture self camera tile (gaya WhatsApp). Bisa di-drag.
+class _SelfPipTile extends StatefulWidget {
+  final RTCVideoRenderer renderer;
+  final VoidCallback? onTap;
+  const _SelfPipTile({required this.renderer, this.onTap});
+
+  @override
+  State<_SelfPipTile> createState() => _SelfPipTileState();
+}
+
+class _SelfPipTileState extends State<_SelfPipTile> {
+  Offset _offset = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.translate(
+      offset: _offset,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onPanUpdate: (d) => setState(() => _offset += d.delta),
+        child: Container(
+          width: 110,
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24, width: 1),
+            boxShadow: const [
+              BoxShadow(blurRadius: 8, color: Colors.black54),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            color: Colors.black,
+            child: RTCVideoView(widget.renderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                mirror: true),
+          ),
+        ),
+      ),
+    );
   }
 }

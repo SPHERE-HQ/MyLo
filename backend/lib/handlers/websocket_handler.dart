@@ -265,6 +265,13 @@ Handler createWsHandler() {
           // ─── VOICE: JOIN ─────────────────────────────────────
           if (type == "voice_join") {
             final c = data["conversationId"] as String?;
+            // Caller juga kirim flag video=true/false (untuk dipropagasi ke
+            // penerima sebagai bagian dari incoming-call event).
+            final isVideo = data["video"] == true;
+            // `kind` membedakan invitation chat (default = chat) vs voice
+            // room komunitas. Untuk komunitas TIDAK ada incoming call —
+            // pemain langsung join (Discord style).
+            final kind = (data["kind"] as String?) ?? "chat";
             if (c == null) { ws.sink.add(_err("conversationId wajib")); return; }
             // Validate membership.
             final db = await getDb();
@@ -276,6 +283,7 @@ Handler createWsHandler() {
 
             voiceConvId = c;
             final room = _voiceRooms.putIfAbsent(c, () => {});
+            final isFirstJoiner = room.isEmpty;
             room[userId!] = ws;
 
             // Send current participants to the joiner.
@@ -297,6 +305,103 @@ Handler createWsHandler() {
             for (final sock in (_chatRooms[c] ?? {}).toList()) {
               if (sock != ws) { try { sock.sink.add(notify); } catch (_) {} }
             }
+
+            // ── INCOMING CALL: caller pertama di chat → bell ke target.
+            if (kind == "chat" && isFirstJoiner) {
+              try {
+                // Ambil daftar member lain di percakapan + tipe percakapan.
+                final convRows = await db.execute(
+                  Sql.named("SELECT type FROM chat_conversations WHERE id=@c"),
+                  parameters: {"c": c},
+                );
+                final convType = convRows.isEmpty
+                    ? "private"
+                    : (convRows.first.toColumnMap()["type"] as String? ?? "private");
+                final memberRows = await db.execute(
+                  Sql.named(
+                      "SELECT user_id FROM chat_members WHERE conversation_id=@c AND user_id <> @me"),
+                  parameters: {"c": c, "me": userId},
+                );
+                // Info caller untuk ditampilkan di layar incoming call.
+                final callerRows = await db.execute(
+                  Sql.named(
+                      "SELECT username, display_name, avatar_url FROM users WHERE id=@id"),
+                  parameters: {"id": userId},
+                );
+                final caller = callerRows.isEmpty
+                    ? <String, dynamic>{}
+                    : callerRows.first.toColumnMap();
+                final callerName = (caller["display_name"] as String?) ??
+                    (caller["username"] as String?) ??
+                    "Seseorang";
+                final body = isVideo ? "Panggilan video masuk" : "Panggilan suara masuk";
+                final incoming = jsonEncode({
+                  "type": "voice_incoming",
+                  "conversationId": c,
+                  "callerId": userId,
+                  "callerName": callerName,
+                  "callerAvatar": caller["avatar_url"],
+                  "video": isVideo,
+                  "convType": convType,
+                });
+                for (final m in memberRows) {
+                  final uid = m[0] as String;
+                  // Push lewat semua socket aktif user tersebut (bukan
+                  // socket yang lagi di chat room saja).
+                  for (final sock in (_userSockets[uid] ?? {}).toList()) {
+                    try { sock.sink.add(incoming); } catch (_) {}
+                  }
+                  // Push FCM high-priority untuk wake device.
+                  // ignore: unawaited_futures
+                  FcmSender.sendToUser(
+                    userId: uid,
+                    title: callerName,
+                    body: body,
+                    data: {
+                      "type": "incoming_call",
+                      "conversationId": c,
+                      "callerId": userId!,
+                      "callerName": callerName,
+                      "video": isVideo ? "1" : "0",
+                    },
+                  );
+                }
+              } catch (_) {
+                // Jangan jatuhkan flow voice_join hanya karena push gagal.
+              }
+            }
+            return;
+          }
+
+          // ─── VOICE: DECLINE (penerima menolak panggilan) ─────
+          if (type == "voice_decline") {
+            final c = data["conversationId"] as String?;
+            if (c == null) return;
+            final notify = jsonEncode({
+              "type": "voice_declined",
+              "conversationId": c,
+              "userId": userId,
+            });
+            // Beritahu caller (siapa saja yang sedang di voice room ini).
+            for (final entry in (_voiceRooms[c] ?? {}).entries) {
+              try { entry.value.sink.add(notify); } catch (_) {}
+            }
+            // Juga ke socket caller via _userSockets supaya UI calling
+            // langsung berhenti walau caller belum sempat join voice room.
+            try {
+              final db = await getDb();
+              final memberRows = await db.execute(
+                Sql.named(
+                    "SELECT user_id FROM chat_members WHERE conversation_id=@c AND user_id <> @me"),
+                parameters: {"c": c, "me": userId},
+              );
+              for (final m in memberRows) {
+                final uid = m[0] as String;
+                for (final sock in (_userSockets[uid] ?? {}).toList()) {
+                  try { sock.sink.add(notify); } catch (_) {}
+                }
+              }
+            } catch (_) {}
             return;
           }
 

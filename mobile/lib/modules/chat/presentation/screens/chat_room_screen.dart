@@ -759,7 +759,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   // ─── UI ───────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final inVoice = _voiceParticipants.isNotEmpty;
+    // Banner "X orang dalam panggilan suara — Gabung" hanya untuk chat
+    // GROUP. Untuk chat 1-on-1, penerima dapat layar incoming call full
+    // screen dengan ringtone (lihat IncomingCallService) — bukan banner.
+    final isDirectChat = (widget.otherUserId ?? '').isNotEmpty;
+    final inVoice = _voiceParticipants.isNotEmpty && !isDirectChat;
     final canTapName = (widget.otherUserId ?? '').isNotEmpty;
     return Scaffold(
       appBar: AppBar(
