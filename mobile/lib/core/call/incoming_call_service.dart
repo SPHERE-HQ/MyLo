@@ -210,13 +210,24 @@ final incomingCallServiceProvider = Provider<IncomingCallService>((ref) {
 /// Pasang/lepas service mengikuti authStateProvider. Pasang lewat
 /// `ref.listen` di dalam ConsumerWidget root (lihat MyloApp).
 void wireIncomingCallService(WidgetRef ref) {
+  // Trigger sekali saat dipasang (ref.listen di Riverpod tidak punya
+  // fireImmediately) — kalau user sudah authed sejak app start, langsung
+  // konek service-nya.
+  final initial = ref.read(authStateProvider).value;
+  final svc = ref.read(incomingCallServiceProvider);
+  if (initial != null) {
+    // ignore: discarded_futures
+    svc.start();
+  }
   ref.listen<AsyncValue<AuthUser?>>(authStateProvider, (prev, next) {
-    final svc = ref.read(incomingCallServiceProvider);
+    final s = ref.read(incomingCallServiceProvider);
     final user = next.value;
     if (user != null) {
-      svc.start();
+      // ignore: discarded_futures
+      s.start();
     } else {
-      svc.stop();
+      // ignore: discarded_futures
+      s.stop();
     }
-  }, fireImmediately: true);
+  });
 }
